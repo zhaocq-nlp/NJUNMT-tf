@@ -149,7 +149,7 @@ The implementation is inspired by the following:
 *[Attention is All You Need](https://arxiv.org/abs/1706.03762)*
 - *[Stronger Baselines for Trustable Results in Neural Machine Translation](http://www.aclweb.org/anthology/W17-3203.pdf)*
 
-## Concat
+## Contact
 
 Any comments or suggestions are welcome.
 
