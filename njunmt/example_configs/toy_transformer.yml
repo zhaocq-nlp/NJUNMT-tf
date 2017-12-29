@@ -1,0 +1,38 @@
+# transformer parameters for debugging
+model: njunmt.models.transformer.Transformer
+model_params: 
+  embedding.dim.source: 8
+  embedding.dim.target: 8
+  modality.params:
+    multiply_embedding_mode: sqrt_depth
+    share_embedding_and_softmax_weights: true
+    dropout_logit_keep_prob: 1.0
+    loss: crossentropy
+    timing: sinusoids
+  source.reverse: false
+  inference.beam_size: 10
+  inference.length_penalty: 0.0
+  inference.maximum_labels_length: 20
+
+  encoder.class: njunmt.encoders.transformer_encoder.TransformerEncoder
+  encoder.params: &default_transformer_params
+    num_layers: 2
+    selfattention.params: 
+      num_heads: 2
+      num_units: 8
+      dropout_attention_keep_prob: 0.9
+      
+    num_filter_units: 5
+    num_hidden_units: 8
+    dropout_relu_keep_prob: 1.0
+    layer_preprocess_sequence: "n"
+    layer_postprocess_sequence: "da"
+    layer_prepostprocess_dropout_keep_prob: 0.9
+    
+  decoder.class: njunmt.decoders.transformer_decoder.TransformerDecoder
+  decoder.params:
+    <<: *default_transformer_params
+    attention.params: 
+      num_heads: 2
+      num_units: 8
+      dropout_attention_keep_prob: 1.0

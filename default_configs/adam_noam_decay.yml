@@ -1,0 +1,22 @@
+# default optimizer for transformer
+# Adam with noam decay
+optimizer_params:
+  optimizer.name: LazyAdam
+  optimizer.params:
+    epsilon: 1.0e-9
+    beta1: 0.9
+    beta2: 0.98
+
+  optimizer.learning_rate: 1.0e-9
+  optimizer.clip_gradients: 0.0
+  
+  optimizer.lr_decay:
+    decay_type: noam_decay
+    scale: 2.0
+    dmodel: 512
+    decay_steps: 16000
+    decay_rate: 0.99
+    start_decay_at: 0
+    stop_decay_at: 1000000000
+    min_learning_rate: 1.0e-9
+    staircase: false

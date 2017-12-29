@@ -1,0 +1,45 @@
+# datasets for debugging
+data:
+  train_features_file: testdata/toy.zh
+  train_labels_file: testdata/toy.en0
+  eval_features_file: testdata/toy.zh
+  eval_labels_file: testdata/toy.en
+  source_words_vocabulary: testdata/vocab.zh
+  target_words_vocabulary: testdata/vocab.en
+  source_bpecodes:
+  target_bpecodes:
+
+# training options for debugging
+model_dir: test_models
+
+train:
+  batch_size: 4
+  batch_tokens_size: 128
+  save_checkpoint_steps: 100
+  train_steps: 300
+  eval_steps: 10
+  maximum_features_length: 50
+  maximum_labels_length: 50
+  shuffle_every_epoch:
+
+# training hooks for debugging (small values)
+metrics:
+  - class: LossMetricSpec
+    params:
+      start_at: 0
+      eval_steps: 50
+      batch_size: 128
+
+  - class: BleuMetricSpec
+    params:
+      start_at: 0
+      eval_steps: 100
+      batch_size: 64
+      beam_size: 5
+      maximum_labels_length: 20
+      delimiter: " "
+      char_level: false
+      maximum_keep_models: 5
+
+
+

@@ -1,0 +1,13 @@
+# default optimizer
+# Adam with fix learning rate 5e-4
+# no learning decay function
+
+optimizer_params:
+  optimizer.name: Adam
+  optimizer.params:
+    epsilon: 0.0000008
+  optimizer.learning_rate: 0.0005
+  optimizer.clip_gradients: 1.0
+  
+  optimizer.lr_decay:
+    decay_type:

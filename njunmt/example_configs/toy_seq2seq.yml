@@ -1,0 +1,45 @@
+# Network parameters for debugging
+model: njunmt.models.attention_seq2seq.AttentionSeq2Seq
+model_params:
+  embedding.dim.source: 8
+  embedding.dim.target: 8
+  modality.params:
+    multiply_embedding_mode:
+    share_embedding_and_softmax_weights: false
+    dropout_logit_keep_prob: 1.0
+    loss: crossentropy
+    timing:
+  source.reverse: false
+  encoder.class: njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder
+  encoder.params:
+    rnn_cell:
+      cell_class: GRUCell
+      cell_params:
+        num_units: 9
+      dropout_input_keep_prob: 0.9
+      dropout_state_keep_prob: 1.0
+      num_layers: 1
+
+  bridge.class: ZeroBridge
+  bridge.params:
+
+  decoder.class: njunmt.decoders.rnn_decoder.CondAttentionDecoder
+  decoder.params:
+    attention.class: BahdanauAttention
+    attention.params:
+      num_units: 5
+    rnn_cell:
+      cell_class: GRUCell
+      cell_params:
+        num_units: 9
+      dropout_input_keep_prob: 1.0
+      dropout_state_keep_prob: 1.0
+      num_layers: 1
+    dropout_context_keep_prob: 1.0
+    dropout_hidden_keep_prob: 1.0
+    dropout_embedding_keep_prob: 1.0
+    logits_dimension: 7
+
+  inference.maximum_labels_length: 200
+  inference.beam_size: 5
+  inference.length_penalty: 0.0

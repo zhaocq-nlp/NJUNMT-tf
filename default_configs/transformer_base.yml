@@ -1,0 +1,80 @@
+# transformer metrics
+metrics:
+  - class: LossMetricSpec
+    params:
+      start_at: 0
+      eval_steps: 100
+      batch_size: 128
+
+  - class: BleuMetricSpec
+    params:
+      start_at: 10000
+      eval_steps: 1000
+      batch_size: 64
+      beam_size: 4
+      length_penalty: -1.0
+      delimiter: " "
+      char_level: false
+      maximum_keep_models: 10
+      early_stop: true
+
+# basic transformer parameters
+model: njunmt.models.transformer.Transformer
+model_params: 
+  embedding.dim.source: &dmodel 512
+  embedding.dim.target: *dmodel
+  modality.params:
+    initializer: random_normal
+    multiply_embedding_mode: sqrt_depth
+    share_embedding_and_softmax_weights: true
+    dropout_logit_keep_prob: 1.0
+    loss: smoothing_crossentropy
+    timing: sinusoids
+  source.reverse: false
+  inference.beam_size: 4
+  inference.length_penalty: -1.0
+  inference.maximum_labels_length: 150
+
+  encoder.class: njunmt.encoders.transformer_encoder.TransformerEncoder
+  encoder.params: &default_transformer_params
+    num_layers: 6
+    selfattention.params: 
+      num_heads: 8
+      num_units: *dmodel
+      dropout_attention_keep_prob: &pdrop 0.9
+      
+    num_filter_units: 2048
+    num_hidden_units: *dmodel
+    dropout_relu_keep_prob: *pdrop
+    layer_preprocess_sequence: "n"
+    layer_postprocess_sequence: "da"
+    layer_prepostprocess_dropout_keep_prob: *pdrop
+    
+  decoder.class: njunmt.decoders.transformer_decoder.TransformerDecoder
+  decoder.params:
+    <<: *default_transformer_params
+    attention.params: 
+      num_heads: 8
+      num_units: *dmodel
+      dropout_attention_keep_prob: *pdrop
+
+optimizer_params:
+  optimizer.name: LazyAdam
+  optimizer.params:
+    epsilon: 1.0e-9
+    beta1: 0.9
+    beta2: 0.98
+
+  optimizer.learning_rate: 1.0e-9
+  optimizer.clip_gradients: 0.0
+
+  optimizer.lr_decay:
+    decay_type: noam_decay
+    scale: 2.0
+    dmodel: *dmodel
+    decay_steps: 16000
+    decay_rate: 0.99
+    start_decay_at: 0
+    stop_decay_at: 1000000000
+    min_learning_rate: 1.0e-9
+    staircase: false

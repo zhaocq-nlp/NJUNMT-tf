@@ -1,0 +1,165 @@
+# WARNING:
+# Do not use this file as is! It only lists and documents available options
+# without caring about their consistency. Prefer using predefined yaml files
+# in reporoot/default_configs/ as a base configuration and specialize it with
+# additional configuration files.
+
+# The directory where models and summaries will be saved. It is created if it does not exist.
+# for all mode, model_dir should be provided, by default: models
+model_dir: models
+
+# training options
+train:
+  # batch size, the number of sentences passed into one step, by default: 80
+  batch_size: 80
+  # the number of words for each batch, by default: None
+  # sentence pairs will be batched together by approximate sequence length
+  batch_tokens_size:
+  # Save a checkpoint every this many steps. by default: 1000
+  save_checkpoint_steps: 1000
+  # Train for this many steps. If None, training forever. by default: 10000000
+  train_steps: 10000000
+  # Evaluate and save summaries every this many steps and display. by default: 100
+  eval_steps: 100
+  # The maximum length of feature sequences during training. by default: None
+  maximum_features_length: 50
+  # The maximum length of label sequences during training. by default: None
+  maximum_labels_length: 50
+  # whether to shuffle data between epochs, if provided,
+  # use it as postfix of the shuffled data, by default: None
+  shuffle_every_epoch:
+
+# training and evaluating data
+data:
+  # training features file, by default: None
+  train_features_file: testdata/toy.zh
+  # training labels file, by default: None
+  train_labels_file: testdata/toy.en0
+  # evaluating features file, by default: None
+  eval_features_file: testdata/toy.zh
+  # evaluating labels file, by default: None
+  # if there are more than one reference, only provide the prefix filename, the program
+  # will automatically recognize the multi references by "eval_labels_file"0, "eval_labels_file"1, ...
+  eval_labels_file: testdata/test.en
+  # source side vocabluary, by default: None
+  source_words_vocabulary: testdata/vocab.zh
+  # target side vocabulary, by default: None
+  target_words_vocabulary: testdata/vocab.en
+  # source side BPE codes, if provided, BPE with be applied to word tokens
+  # in features_files. by default: None
+  # Note that the source_words_vocabulary must be generated after applying BPE.
+  source_bpecodes:
+  # target side BPE codes, if provided, BPE with be applied to word tokens
+  # in labels_files. by default: None
+  # Note that the target_words_vocabulary must be generated after applying BPE.
+  target_bpecodes:
+
+# auxiliary training hooks, by default: empty list
+# Now, there is no training hook implemented yet.
+hooks: []
+
+# list of evaluation metrics on eval data (eval_features_file and eval_labels_file)
+#  Now we only provide LossMetricSpec and BleuMetricSpec
+metrics:
+  - class: LossMetricSpec  # evaluate using loss function on "eval_labels_file" or "eval_labels_file"0
+    params:
+      start_at: 0 # start to evaluate from this step, by default: 0
+      eval_steps: 100 # evalute every this steps, by default: 100
+      batch_size: 128  # evaluation batch size, by default: 128
+      do_summary: true  # whether make summaries for tensorboard, by default: true
+
+  - class: BleuMetricSpec # evaluate using multi-bleu.perl (do beam search inference)
+    params:
+      start_at: 10000  # start to evaluate from this step, by default: 0
+      eval_steps: 1000  # evaluate every this steps, by default: 1000
+      batch_size: 32  # inference beam size, by default: None
+      beam_size: 4 # inference beam size, if None, inherit from training model parameters, by default: None
+      maximum_labels_length: 150 # maximum generation length, if None, inherit from training model parameters, by default: None
+      length_penalty: -1.0 # inference length penalty, if None, inherit from training model parameters, by default: None
+      delimiter: " "  # output delimiter, by default: " "(space)
+      char_level: false  # whether output in char-level, by default: false
+      maximum_keep_models: 5  # maximum keeping checkpoints in tar.gz format, by default: 5
+      multibleu_script: ./seq2seq/tools/multi-bleu.perl  # multi-bleu script, by default: ./seq2seq/tools/multi-bleu.perl
+      tokenize_script: ./seq2seq/tools/tokenizeChinese.py  # script to char-level, by default: ./seq2seq/tools/tokenizeChinese.py
+      early_step: true  # whether to use BLEU to do early stop, by default: true
+      estop_patience: 30  # the maximum patience for early stop
+      do_summary: true  # whether make summaries for tensorboard, by default: true
+
+# optimizer parameters
+optimizer_params:
+  optimizer.name: Adam  # optimizer name, by default: Adam
+  optimizer.params: # optimizer-specific parameters
+    epsilon: 0.0000008
+  optimizer.learning_rate: 0.0005  # learning rate
+  optimizer.clip_gradients: 1.0 # clip gradient norm
+  # parameters for learning rate decaying scheme
+  optimizer.lr_decay:
+    # decaying function name, can be *_decay functions in tf.train, or loss_decay / noam_decay
+    #   by default: None
+    decay_type:
+    # minimum learning learning rate: 1.0e-5
+    min_learning_rate: 0.00005
+    # see tf.train.*_decay for more details for the rest parameters
+    decay_steps: 100  # by default: 100, but for noam_decay, this means the "warmup steps"
+    decay_rate: 0.99  # by default: 0.99
+    start_decay_at: 0   # by default: 0
+    stop_decay_at: 1000000000 # by default: sys.maxsize
+    staircase: false  # by default: false
+    # parameter for noam_decay, by default: None
+    dmodel: 512
+    # parameter for noam_decay, by default: 10.0
+    scale: 2.0
+    # parameter for loss_decay, by default: None
+    patience: 30
+
+# options for inference or mutual
+infer:
+  # source side vocabluary, by default: None
+  source_words_vocabulary: testdata/vocab.zh
+  # target side vocabulary, by default: None
+  target_words_vocabulary: testdata/vocab.en
+  # source side BPE codes, if provided, BPE with be applied to word tokens
+  # in features_files. by default: None
+  # Note that the source_words_vocabulary must be generated after applying BPE.
+  source_bpecodes:
+  # target side BPE codes, if provided, BPE with be applied to word tokens
+  # in labels_files. by default: None
+  # Note that the target_words_vocabulary must be generated after applying BPE.
+  target_bpecodes:
+  # inference batch size, by default: 32
+  batch_size: 32
+  # inference beam size, by default: 10
+  beam_size: 10
+  # The maximum length of label sequences for inference. by default: 150
+  maximum_labels_length: 150
+  # length penalty, by default: -1.0
+  length_penalty: -1.0
+  # inference output delimiter, by default: " " (one space)
+  delimiter: " "
+  # output in charactor level, for inference only, by default: false
+  char_level: false
+  # the script for tokenizing the output into char-level, for inference only, by default: ./seq2seq/tools/tokenizeChinese.py
+  tokenize_script: ./seq2seq/tools/tokenizeChinese.py
+  # the script for computing the multibleu score, for inference only, by default: ./seq2seq/tools/multi-bleu.perl
+  multibleu_script: ./seq2seq/tools/multi-bleu.perl
+
+# testdata for inference
+# list of testsets
+infer_data:
+    # source features file, line by line, by default: None
+  - features_file: source_file1
+    # target labels file, line by line according to features file,
+    # if provided, use multibleu_script to compute BLEU score, by default: None
+    labels_file: reference1
+    # output file for translations, line by line, by default: None
+    output_file: translation_output1
+     # whether to output attention score in a specific format for seq2seq/tools/plot_heatmap.py, by default: false
+    output_attention: false
+  - features_file: source_file2
+    labels_file: reference2
+    output_file: translation_output2
+    output_attention: true
+
+
+# network parameters
+# for more details, see the example yaml configurations
