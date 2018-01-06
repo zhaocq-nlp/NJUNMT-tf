@@ -133,6 +133,8 @@ The following features remain unimplemented:
 
 - multi-gpu training
 - caching strategy for Transformer ("transformer big" setting fails on Geforce 1080TI due to Memory Allocation Error)
+- schedule sampling
+- minimum risk training
 
 and trustable results on open datasets (WMT) are supposed to be reported.
 
