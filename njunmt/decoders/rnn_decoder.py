@@ -200,24 +200,17 @@ class CondAttentionDecoder(Decoder):
         # layer0: get hidden1
         cell_output0, cell_state0 = self._cond_rnn_cell(decoder_input, decoder_states[0])
 
-        # Compute attention
-        # att_scores: [batch_size, 1]
-        # attention_context: [batch_size, dim_context]
-        with tf.variable_scope(self._attention.name):
-            projected_query = fflayer(
-                cell_output0, output_size=self._attention.attention_units,
-                dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"],
-                activation=None, name="ff_att_query")
         # compute attention using hidden1
         # [batch_size, n_timesteps_src]
         attention_scores, attention_context = self._attention.build(
-            query=projected_query,
-            keys=projected_attention_keys,
+            query=cell_output0, query_is_projected=False,  # projected_query,
+            keys=projected_attention_keys, key_is_projected=True,
             memory=attention_values,
             memory_length=attention_length)
         # hidden1's state is the hidden2 's initial state
         following_decoder_state = tuple([cell_state0] + list(decoder_states[1:]))
-        cell_output, cell_states = self._r_rnn_cells(attention_context, following_decoder_state)
+        cell_output, cell_states = self._r_rnn_cells(
+            attention_context, following_decoder_state)
 
         outputs = self._DecoderOutputSpec(
             cur_decoder_hidden=cell_output,
@@ -394,19 +387,11 @@ class AttentionDecoder(Decoder):
             tf.concat([decoder_input, prev_attention_context], axis=1),
             rnn_states)
 
-        # Compute attention
-        # att_scores: [batch_size, 1]
-        # attention_context: [batch_size, dim_context]
-        with tf.variable_scope(self._attention.name):
-            projected_query = fflayer(
-                cell_output, output_size=self._attention.attention_units,
-                dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"],
-                activation=None, name="ff_att_query")
         # compute attention using hidden1
         # [batch_size, n_timesteps_src]
         attention_scores, attention_context = self._attention.build(
-            query=projected_query,
-            keys=projected_attention_keys,
+            query=cell_output, query_is_projected=False,  # projected_query,
+            keys=projected_attention_keys, key_is_projected=True,
             memory=attention_values,
             memory_length=attention_length)
 

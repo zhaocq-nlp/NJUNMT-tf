@@ -27,7 +27,7 @@ from njunmt.layers.common_layers import layer_preprocess
 from njunmt.layers.common_layers import layer_postprocessing
 from njunmt.layers.common_layers import transformer_ffn_layer
 from njunmt.layers.multihead_attention import attention_bias_ignore_padding
-from njunmt.layers.multihead_attention import embedding_to_padding
+from njunmt.layers.basic_attention import embedding_to_padding
 from njunmt.layers.multihead_attention import attention_bias_lower_triangle
 from njunmt.layers.multihead_attention import multihead_attention_layer
 

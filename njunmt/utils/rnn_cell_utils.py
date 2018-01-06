@@ -23,6 +23,8 @@ import tensorflow as tf
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops.rnn_cell_impl import RNNCell
 
+from njunmt.utils.rnn_cells import StackedRNNCell
+
 # Import all cell classes from Tensorflow
 TF_CELL_CLASSES = [
                       x for x in rnn_cell_impl.__dict__.values()
@@ -94,7 +96,7 @@ def get_multilayer_rnn_cells(cell_class,
                 state_keep_prob=dropout_state_keep_prob)
         cells.append(cell)
     # use MultiRNN Cell even when its length is 1, for bridge computing
-    return tf.contrib.rnn.MultiRNNCell(cells=cells)
+    return StackedRNNCell(cells=cells)
 
 
 def get_condr_rnn_cell(cell_class,
@@ -136,5 +138,5 @@ def get_condr_rnn_cell(cell_class,
         r_cells.append(cell)
     # use a multiRNNCell as wrapper
     # to deal with hidden state of type tuple
-    r_cells = tf.contrib.rnn.MultiRNNCell(cells=r_cells)
+    r_cells = StackedRNNCell(cells=r_cells, name="stacked_r_rnn_cell")
     return cond_cell, r_cells

@@ -49,6 +49,7 @@ def main(_argv):
     model_dirs = FLAGS.model_dir.strip().split(",")
     if len(model_dirs) == 1:
         model_configs = deep_merge_dict(model_configs, ModelConfigs.load(model_dirs[0]))
+        model_configs = update_infer_model_configs(model_configs, FLAGS)
         runner = InferExperiment(model_configs=model_configs)
     else:
         runner = EnsembleExperiment(model_configs=model_configs, model_dirs=model_dirs,

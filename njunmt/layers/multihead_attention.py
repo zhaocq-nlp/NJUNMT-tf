@@ -18,37 +18,12 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+from njunmt.layers.basic_attention import BaseAttention
 from njunmt.layers.common_layers import conv1d
 from njunmt.layers.common_layers import dropout_wrapper
-from njunmt.layers.basic_attention import BaseAttention
 from njunmt.utils import algebra_ops
 
 FLOAT_MIN = -1.e9
-
-
-def embedding_to_padding(emb, sequence_length):
-    """ Calculates the padding mask based on `sequence_length`.
-
-    Args:
-        emb: An input embedding `Tensor` with shape
-          [batch_size, maximum_sequence_length, dmodel]
-        sequence_length: Length of each sequence in `emb`,
-           a Tensor with shape [batch_size, ]
-
-    Returns: A float Tensor with shape [batch_size, maximum_sequence_length],
-      where 1.0 for padding and 0.0 for non-padding.
-    """
-    if emb is None:
-        seq_mask = 1. - tf.sequence_mask(
-            lengths=tf.to_int32(sequence_length),
-            maxlen=tf.reduce_max(sequence_length),
-            dtype=tf.float32)  # 1.0 for padding
-    else:
-        seq_mask = 1. - tf.sequence_mask(
-            lengths=tf.to_int32(sequence_length),
-            maxlen=tf.shape(emb)[1],
-            dtype=tf.float32)  # 1.0 for padding
-    return seq_mask
 
 
 def attention_bias_ignore_padding(memory_padding):
@@ -242,6 +217,7 @@ class MultiHeadAttention(BaseAttention):
             # linear transform
             attention_context = conv1d(attention_context, self._output_depth, kernel_size=1,
                                        name="output_transform")
+            #TODO here the dimension of attention_weight is not checked for output_attention
             return attention_weight, attention_context
 
     def _compute_qkv(self, query, memory):

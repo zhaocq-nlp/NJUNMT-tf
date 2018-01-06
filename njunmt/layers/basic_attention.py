@@ -19,9 +19,50 @@ from __future__ import print_function
 from abc import abstractmethod, abstractproperty
 import tensorflow as tf
 
+from njunmt.layers.common_layers import fflayer
+from njunmt.layers.common_layers import dropout_wrapper
 from njunmt.utils.configurable import Configurable
+from njunmt.utils.algebra_ops import advanced_softmax
 
 FLOAT_MIN = -1.e9
+
+
+def embedding_to_padding(emb, sequence_length):
+    """ Calculates the padding mask based on `sequence_length`.
+
+    Args:
+        emb: An input embedding `Tensor` with shape
+          [batch_size, maximum_sequence_length, dmodel]
+        sequence_length: Length of each sequence in `emb`,
+           a Tensor with shape [batch_size, ]
+
+    Returns: A float Tensor with shape [batch_size, maximum_sequence_length],
+      where 1.0 for padding and 0.0 for non-padding.
+    """
+    if emb is None:
+        seq_mask = 1. - tf.sequence_mask(
+            lengths=tf.to_int32(sequence_length),
+            maxlen=tf.reduce_max(sequence_length),
+            dtype=tf.float32)  # 1.0 for padding
+    else:
+        seq_mask = 1. - tf.sequence_mask(
+            lengths=tf.to_int32(sequence_length),
+            maxlen=tf.shape(emb)[1],
+            dtype=tf.float32)  # 1.0 for padding
+    return seq_mask
+
+
+def attention_bias_ignore_padding(memory_padding):
+    """ Create a bias tensor to be added to attention logits
+
+    Args:
+        memory_padding: A float Tensor with shape [batch_size, memory_length],
+          where 1.0 for padding and 0.0 for non-padding.
+
+    Returns: A float Tensor with shape [batch_size, memory_length],
+      where -1e9 for padding and 0 for non-padding.
+    """
+    return FLOAT_MIN * memory_padding
 
 
 class BaseAttention(Configurable):
@@ -93,53 +134,37 @@ class BaseAttention(Configurable):
         Returns: A tuple `(attention_scores, attention_context)`. The
           `attention_scores` has shape [batch_size, num_of_values].
           The `attention_context` has shape [batch_size, channels_value].
-
-        Raises:
-            NotImplementedError: if `query_is_projected` and `key_is_projected`
-              are both False, or `memory_bias` is provided, or `memory_length`
-              is not provided.
         """
-        if not query_is_projected or not key_is_projected:
-            raise NotImplementedError("query and key should be pre-projected before build fn is called")
-        if memory_length is None or memory_bias is not None:
-            raise NotImplementedError("in BaseAttention, we only use values_length to mask the attention values")
+        with tf.variable_scope(self.name):
+            if not query_is_projected:
+                query = fflayer(query, output_size=self.attention_units,
+                                activation=None, name="ff_att_query")
+            if not key_is_projected:
+                keys = fflayer(keys, output_size=self.attention_units,
+                               activation=None, name="ff_att_keys")
 
-        # expanded query: [batch_size, 1, channels_query]
-        # energies: [batch_size, num_of_keys]
-        energies = self.att_fn(query, keys)
+            if memory_bias is None:
+                if memory_length is not None:
+                    memory_padding = embedding_to_padding(memory, memory_length)
+                    memory_bias = attention_bias_ignore_padding(memory_padding)
 
-        # Replace all scores for padded inputs with tf.float32.min
-        num_scores = tf.shape(energies)[1]  # number of keys
-        scores_mask = tf.sequence_mask(
-            lengths=tf.to_int32(memory_length),
-            maxlen=tf.to_int32(num_scores),
-            dtype=tf.float32)
+            # attention weights: [batch_size, num_of_values]
+            attention_weight = self.att_fn(query, keys, memory_bias)
 
-        energies = energies * scores_mask + ((1.0 - scores_mask) * FLOAT_MIN)
+            # Calculate the weighted average of the attention inputs
+            # according to the scores
+            #   [batch_size, num_of_values, 1] * [batch_size, num_of_values, channels_value]
+            context = tf.expand_dims(attention_weight, 2) * memory
+            #   [batch_size, channels_value]
+            context = tf.reduce_sum(context, 1, name="context")
+            context.set_shape([None, memory.get_shape().as_list()[-1]])
 
-        # Stabilize energies first and then exp
-        energies = energies - tf.reduce_max(energies, axis=1, keep_dims=True)
-        unnormalized_scores = tf.exp(energies) * scores_mask
-
-        normalization = tf.reduce_sum(unnormalized_scores, axis=1, keep_dims=True)
-
-        # Normalize the scores
-        # [batch_size, num_of_values]
-        scores_normalized = unnormalized_scores / normalization
-
-        # Calculate the weighted average of the attention inputs
-        # according to the scores
-        #   [batch_size, num_of_values, 1] * [batch_size, num_of_values, channels_value]
-        context = tf.expand_dims(scores_normalized, 2) * memory
-        #   [batch_size, channels_value]
-        context = tf.reduce_sum(context, 1, name="context")
-        context.set_shape([None, memory.get_shape().as_list()[-1]])
-
-        return scores_normalized, context
+            return attention_weight, context
 
 
 class BahdanauAttention(BaseAttention):
     """ Attention mechanism described in https://arxiv.org/abs/1409.0473. """
+
     def __init__(self, params, mode, name=None):
         """ Initializes the parameters of the attention.
 
@@ -159,11 +184,11 @@ class BahdanauAttention(BaseAttention):
     @staticmethod
     def default_params():
         """ Returns a dictionary of default parameters of this attention. """
-        return {"num_units": 512}
+        return {"num_units": 512,
+                "dropout_attention_keep_prob": 1.0}
 
     def att_fn(self, query, keys, bias=None):
-        """ Computes attention energies using a feed forward layer,
-        which will be passed into a softmax function.
+        """ Computes attention scores.
 
         Args:
             query: Attention query tensor with shape
@@ -174,6 +199,10 @@ class BahdanauAttention(BaseAttention):
 
         Returns: A Tensor, [batch_size, num_of_keys]
         """
-        with tf.variable_scope(self.name):
-            v_att = tf.get_variable("v_att", shape=[self.params["num_units"]], dtype=tf.float32)
-        return tf.reduce_sum(v_att * tf.tanh(keys + tf.expand_dims(query, 1)), [2])
+        v_att = tf.get_variable("v_att", shape=[self.params["num_units"]], dtype=tf.float32)
+        logits = tf.reduce_sum(v_att * tf.tanh(keys + tf.expand_dims(query, 1)), [2])
+        if bias is not None:
+            logits += bias
+        attention_scores = advanced_softmax(logits)
+        attention_scores = dropout_wrapper(attention_scores, self.params["dropout_attention_keep_prob"])
+        return attention_scores
