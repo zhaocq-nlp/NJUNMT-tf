@@ -23,15 +23,15 @@ from collections import namedtuple
 import tensorflow as tf
 
 from njunmt.decoders.decoder import Decoder
-from njunmt.layers import basic_attention
+from njunmt.layers import common_attention
 from njunmt.layers.common_layers import fflayer
 from njunmt.utils.rnn_cell_utils import get_condr_rnn_cell
 from njunmt.utils.rnn_cell_utils import get_multilayer_rnn_cells
 
 # import all attention
 ATTENTION_CLS = [
-    x for x in basic_attention.__dict__.values()
-    if inspect.isclass(x) and issubclass(x, basic_attention.BaseAttention)
+    x for x in common_attention.__dict__.values()
+    if inspect.isclass(x) and issubclass(x, common_attention.BaseAttention)
     ]
 for att in ATTENTION_CLS:
     setattr(sys.modules[__name__], att.__name__, att)
@@ -89,8 +89,9 @@ class CondAttentionDecoder(Decoder):
             attention_scores=tf.float32)
 
     def _check_parameters(self):
-        assert self.params["attention.class"] in ["BahdanauAttention"], \
-            "attention.class should be BahdanauAttention"
+        assert self.params["attention.class"] in \
+               ["BahdanauAttention", "MultiHeadAttention"], (
+            "attention.class should be BahdanauAttention or MultiHeadAttention")
 
     @staticmethod
     def default_params():
@@ -203,7 +204,7 @@ class CondAttentionDecoder(Decoder):
         # compute attention using hidden1
         # [batch_size, n_timesteps_src]
         attention_scores, attention_context = self._attention.build(
-            query=cell_output0, query_is_projected=False,  # projected_query,
+            query=cell_output0, query_is_projected=False,
             keys=projected_attention_keys, key_is_projected=True,
             memory=attention_values,
             memory_length=attention_length)
@@ -271,8 +272,9 @@ class AttentionDecoder(Decoder):
             attention_scores=tf.float32)
 
     def _check_parameters(self):
-        assert self.params["attention.class"] in ["BahdanauAttention"], \
-            "attention.class should be BahdanauAttention"
+        assert self.params["attention.class"] in \
+               ["BahdanauAttention", "MultiHeadAttention"], (
+            "attention.class should be BahdanauAttention or MultiHeadAttention")
 
     @staticmethod
     def default_params():
@@ -390,7 +392,7 @@ class AttentionDecoder(Decoder):
         # compute attention using hidden1
         # [batch_size, n_timesteps_src]
         attention_scores, attention_context = self._attention.build(
-            query=cell_output, query_is_projected=False,  # projected_query,
+            query=cell_output, query_is_projected=False,
             keys=projected_attention_keys, key_is_projected=True,
             memory=attention_values,
             memory_length=attention_length)

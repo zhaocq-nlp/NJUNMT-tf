@@ -20,15 +20,15 @@ import tensorflow as tf
 from collections import namedtuple
 
 from njunmt.encoders.encoder import Encoder
+from njunmt.utils.expert_utils import PadRemover
 from njunmt.layers.common_layers import dropout_wrapper
 from njunmt.layers.common_layers import layer_postprocessing
 from njunmt.layers.common_layers import layer_preprocess
 from njunmt.layers.common_layers import transformer_ffn_layer
-from njunmt.utils.expert_utils import PadRemover
-from njunmt.layers.basic_attention import embedding_to_padding
-from njunmt.layers.multihead_attention import attention_bias_ignore_padding
-from njunmt.layers.multihead_attention import attention_bias_to_padding
-from njunmt.layers.multihead_attention import multihead_attention_layer
+from njunmt.layers.common_attention import embedding_to_padding
+from njunmt.layers.common_attention import attention_bias_ignore_padding
+from njunmt.layers.common_attention import attention_bias_to_padding
+from njunmt.layers.common_attention import multihead_attention_layer
 
 
 class TransformerEncoder(Encoder):
