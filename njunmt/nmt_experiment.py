@@ -35,6 +35,7 @@ from njunmt.inference.decode import infer_sentences
 @six.add_metaclass(ABCMeta)
 class Experiment:
     """ Define base experiment class. """
+
     def __init__(self):
         """Initializes. """
         pass
@@ -56,6 +57,7 @@ class Experiment:
 
 class TrainingExperiment(Experiment):
     """ Define an experiment for training. """
+
     def __init__(self, model_configs):
         """ Initializes the training experiment.
 
@@ -146,10 +148,10 @@ class TrainingExperiment(Experiment):
             "train_labels_file",
             self._model_configs["train"]["batch_size"],
             self._model_configs["train"]["batch_tokens_size"],
-            self._model_configs["train"]["maximum_features_length"],
-            self._model_configs["train"]["maximum_labels_length"],
             self._model_configs["train"]["shuffle_every_epoch"])
-        train_data = train_text_inputter.make_feeding_data()
+        train_data = train_text_inputter.make_feeding_data(
+            maximum_encoded_features_length=self._model_configs["train"]["maximum_features_length"],
+            maximum_encoded_labels_length=self._model_configs["train"]["maximum_labels_length"])
         eidx = 0
         while True:
             if sess.should_stop():
@@ -165,6 +167,7 @@ class TrainingExperiment(Experiment):
 
 class InferExperiment(Experiment):
     """ Define an experiment for inference. """
+
     def __init__(self, model_configs):
         """ Initializes the inference experiment.
 
@@ -245,8 +248,7 @@ class InferExperiment(Experiment):
         text_inputter = TextLineInputter(
             dataset=dataset,
             data_field_name="eval_features_file",
-            batch_size=self._model_configs["infer"]["batch_size"],
-            maximum_line_length=None)
+            batch_size=self._model_configs["infer"]["batch_size"])
         # reload
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
         if checkpoint_path:

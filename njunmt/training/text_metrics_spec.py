@@ -192,8 +192,6 @@ class LossMetricSpec(TextMetricSpec):
             labels_field_name="eval_labels_file",
             batch_size=self._batch_size,
             batch_tokens_size=None,
-            maximum_features_length=None,
-            maximum_labels_length=None,
             shuffle_every_epoch=None,
             bucketing=True)
         self._eval_feeding_data = text_inputter.make_feeding_data()
@@ -359,8 +357,7 @@ class BleuMetricSpec(TextMetricSpec):
         text_inputter = TextLineInputter(
             dataset=self._dataset,
             data_field_name="eval_features_file",
-            batch_size=self._batch_size,
-            maximum_line_length=None)
+            batch_size=self._batch_size)
         self._eval_feeding_data = text_inputter.make_feeding_data()
         self._model_configs = update_infer_params(  # update inference parameters
             self._model_configs,
