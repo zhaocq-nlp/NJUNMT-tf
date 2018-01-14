@@ -270,7 +270,8 @@ def infer(
             # output attention
             if output_attention and att is not None:
                 for idx in range(len(x_str)):
-                    trans_list = vocab_target.convert_to_wordlist(prediction[idx, :], bpe_decoding=False)
+                    trans_list = vocab_target.convert_to_wordlist(
+                        prediction[idx, :], bpe_decoding=False, reverse_seq=False)
                     attentions[cnt + idx] = {
                         "source": x_str[idx],
                         "translation": " ".join(trans_list),

@@ -25,6 +25,8 @@ train:
   maximum_features_length: 50
   # The maximum length of label sequences during training. by default: None
   maximum_labels_length: 50
+  # whether to reverse the target side to train the model. by defalt: False
+  reverse_target: False
   # whether to shuffle data between epochs, if provided,
   # use it as postfix of the shuffled data, by default: None
   shuffle_every_epoch:

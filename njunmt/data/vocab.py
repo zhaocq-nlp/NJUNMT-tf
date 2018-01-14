@@ -75,7 +75,8 @@ def create_vocabulary_lookup_table_numpy(filename):
 
 class Vocab(object):
     """ Class for vocabulary (feature map) """
-    def __init__(self, filename, bpe_codes_file=None):
+
+    def __init__(self, filename, bpe_codes_file=None, reverse_seq=False):
         """ Initializes the object.
 
         Args:
@@ -83,6 +84,8 @@ class Vocab(object):
               Each word is mapped to its line number (starting from 0).
             bpe_codes_file: Path to a BPE code file. If provided, do BPE
               before feature mapping.
+            reverse_seq: Whether to reverse the sequence when encode the words
+              to ids.
 
         Raises:
             ValueError: if `filename` or `bpe_codes_file` does not exist.
@@ -92,6 +95,7 @@ class Vocab(object):
         self._eos_id = self.vocab_dict["SEQUENCE_END"]
         self._unk_id = self.vocab_dict["UNK"]
         self._vocab_size = len(self.vocab_dict)
+        self._reverse_seq = reverse_seq
         self._bpe = None
         if bpe_codes_file and not bpe_codes_file == "":
             if not gfile.Exists(bpe_codes_file):
@@ -158,17 +162,20 @@ class Vocab(object):
               for w in words]
         if n_words > 0:
             ss = [w if w < n_words else self.unk_id for w in ss]
+        if self._reverse_seq:
+            ss = ss[::-1]
         ss += [self.eos_id]
         return ss
 
-    def convert_to_wordlist(self, pred_ids, bpe_decoding=True):
+    def convert_to_wordlist(self, pred_ids, bpe_decoding=True, reverse_seq=True):
         """ Converts list of token ids to list of word tokens.
 
         Args:
             pred_ids: A list of integers indicating token ids.
-            bpe_decoding: Whether to recover from BPE. Set
-              bpe_decoding to false only when using this
-              for displaying attention.
+            bpe_decoding: Whether to recover from BPE. Set to
+              false only when using this for displaying attention.
+            reverse_seq: Whether to reverse the sequence after transformation.
+              Set to false only when using this for displaying attention.
 
         Returns: A list of word tokens.
         """
@@ -179,9 +186,8 @@ class Vocab(object):
             if len(pred_tokens) == 1:
                 return ['']
             pred_tokens = pred_tokens[:pred_tokens.index("SEQUENCE_END")]
-        # if sys.version_info < (3, 0):
-        #     return [w.decode("utf-8") for w in pred_tokens]
-        # else:
+        if reverse_seq and self._reverse_seq:
+            return pred_tokens[::-1]
         return pred_tokens
 
     def __getitem__(self, item):
