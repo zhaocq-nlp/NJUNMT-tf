@@ -1,6 +1,8 @@
 # Neural Machine Translation
+
+**This is the oldest version of code, so it is not recommended that you use this branch.**
+
 -------
-(**This is the oldest version of code, so it is not recommended that you use this branch.**)
 **This** is an in-house implemented attention-based encoder-decoder model for neural machine translation system based on Tensorflow. 
  It has several features:
  - **Deep Model**: multi-layer bidirectional GRU/LSTM, multi-layer conditional GRU/LSTM
