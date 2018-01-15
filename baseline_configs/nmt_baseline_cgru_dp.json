@@ -1,0 +1,48 @@
+{
+  "model": "seq2seq.models.base_seq2seq.BaseSeq2Seq",
+  "model_params": {
+    "embedding.dim.source": 512,
+    "embedding.dim.target": 512,
+    "encoder.class": "seq2seq.encoders.rnn_encoder.StackBidirectionalRNNEncoder",
+    "encoder.params": {
+      "rnn_cell": {
+        "cell_class": "GRUCell",
+        "cell_params": {
+          "num_units": 1024
+        },
+        "dropout_input_keep_prob": 1.0,
+        "dropout_state_keep_prob": 1.0,
+        "num_layers": 1
+      }
+    },
+    "decoder.class": "seq2seq.decoders.rnn_decoder.CondAttentionDecoder",
+    "decoder.params": {
+      "attention_units": 2048,
+      "rnn_cell": {
+        "cell_class": "GRUCell",
+        "cell_params": {
+          "num_units": 1024
+        },
+        "dropout_input_keep_prob": 1.0,
+        "dropout_state_keep_prob": 1.0,
+        "num_layers": 1
+      },
+      "dim.logit": 512,
+      "dropout_context_keep_prob": 1.0,
+      "dropout_hidden_keep_prob": 1.0,
+      "dropout_logit_keep_prob": 0.5,
+      "dropout_embedding_keep_prob": 1.0
+    },
+    "inference.max_seq_len": 200,
+    "inference.beam_size": 10,
+    "loss": "CrossEntropy"
+  },
+  "optimizer_params": {
+    "optimizer.name": "Adam",
+    "optimizer.params": {
+      "epsilon": 0.0000008
+    },
+    "optimizer.learning_rate": 0.0005,
+    "optimizer.clip_gradients": 1.0
+  }
+}

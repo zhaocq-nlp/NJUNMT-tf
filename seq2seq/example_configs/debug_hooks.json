@@ -1,0 +1,23 @@
+{
+  "training_hooks": {
+    "LossMetricHook": {
+      "start_at": 0,
+      "eval_every_n_steps": 10,
+      "batch_size": 128,
+      "dev_target_bpe": "",
+      "half_lr_auto": true,
+      "half_lr_every_n_steps": -1,
+      "max_patience": 20,
+      "min_learning_rate": 5e-5
+    },
+    "BLEUValidationHook": {
+      "start_at": 0,
+      "eval_every_n_steps": 100,
+      "batch_size": 128,
+      "beam_size": 5,
+      "delimiter": " ",
+      "tokenize_output": false,
+      "maximum_keep_models": 10
+    }
+  }
+}
