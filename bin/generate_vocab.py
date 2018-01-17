@@ -75,7 +75,7 @@ logging.info("Found %d unique tokens in the vocabulary.", len(cnt))
 # Filter tokens below the frequency threshold
 if args.min_frequency > 0:
   filtered_tokens = [(w, c) for w, c in cnt.most_common()
-                     if c > args.min_frequency]
+                     if c >= args.min_frequency]
   cnt = collections.Counter(dict(filtered_tokens))
 
 logging.info("Found %d unique tokens with frequency > %d.",
