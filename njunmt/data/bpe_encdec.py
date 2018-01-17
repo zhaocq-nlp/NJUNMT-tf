@@ -16,13 +16,12 @@ import re
 
 
 class BPE(object):
-
-    def __init__(self, codes, separator='@@'):
+    def __init__(self, codes, separator='@@', vocab=None, vocabulary_threshold=None):
         codes = codecs.open(codes, encoding='utf-8')
         # check version information
         firstline = codes.readline()
         if firstline.startswith('#version:'):
-            self.version = tuple([int(x) for x in re.sub(r'(\.0+)*$','', firstline.split()[-1]).split(".")])
+            self.version = tuple([int(x) for x in re.sub(r'(\.0+)*$', '', firstline.split()[-1]).split(".")])
         else:
             self.version = (0, 1)
             codes.seek(0)
@@ -30,10 +29,13 @@ class BPE(object):
         self.bpe_codes = [tuple(item.split()) for item in codes]
 
         # some hacking to deal with duplicates (only consider first instance)
-        self.bpe_codes = dict([(code,i) for (i,code) in reversed(list(enumerate(self.bpe_codes)))])
-        self.bpe_codes_reverse = dict([(pair[0] + pair[1], pair) for pair,i in self.bpe_codes.items()])
+        self.bpe_codes = dict([(code, i) for (i, code) in reversed(list(enumerate(self.bpe_codes)))])
+        self.bpe_codes_reverse = dict([(pair[0] + pair[1], pair) for pair, i in self.bpe_codes.items()])
         self.separator = separator
-        self.vocab = None
+        if vocab:
+            self.vocab = read_vocabulary(codecs.open(vocab, encoding="utf-8"), vocabulary_threshold)
+        else:
+            self.vocab = None
         self.glossaries = []
 
     def encode(self, sentence):
@@ -88,7 +90,7 @@ class BPE(object):
         word_segments = [word]
         for gloss in self.glossaries:
             word_segments = [out_segments for segment in word_segments
-                                 for out_segments in isolate_glossary(segment, gloss)]
+                             for out_segments in isolate_glossary(segment, gloss)]
         return word_segments
 
 
@@ -104,6 +106,7 @@ def get_pairs(word):
         prev_char = char
     return pairs
 
+
 def bpe_encode(orig, bpe_codes, bpe_codes_reverse, vocab, separator, version, glossaries=None, cache={}):
     """Encode word based on list of BPE merge operations, which are applied consecutively
     """
@@ -117,8 +120,8 @@ def bpe_encode(orig, bpe_codes, bpe_codes_reverse, vocab, separator, version, gl
 
     if version == (0, 1):
         word = tuple(orig) + ('</w>',)
-    elif version == (0, 2): # more consistent handling of word-final segments
-        word = tuple(orig[:-1]) + ( orig[-1] + '</w>',)
+    elif version == (0, 2):  # more consistent handling of word-final segments
+        word = tuple(orig[:-1]) + (orig[-1] + '</w>',)
     else:
         raise NotImplementedError
 
@@ -128,7 +131,7 @@ def bpe_encode(orig, bpe_codes, bpe_codes_reverse, vocab, separator, version, gl
         return orig
 
     while True:
-        bigram = min(pairs, key = lambda pair: bpe_codes.get(pair, float('inf')))
+        bigram = min(pairs, key=lambda pair: bpe_codes.get(pair, float('inf')))
         if bigram not in bpe_codes:
             break
         first, second = bigram
@@ -143,8 +146,8 @@ def bpe_encode(orig, bpe_codes, bpe_codes_reverse, vocab, separator, version, gl
                 new_word.extend(word[i:])
                 break
 
-            if word[i] == first and i < len(word)-1 and word[i+1] == second:
-                new_word.append(first+second)
+            if word[i] == first and i < len(word) - 1 and word[i + 1] == second:
+                new_word.append(first + second)
                 i += 2
             else:
                 new_word.append(word[i])
@@ -160,13 +163,14 @@ def bpe_encode(orig, bpe_codes, bpe_codes_reverse, vocab, separator, version, gl
     if word[-1] == '</w>':
         word = word[:-1]
     elif word[-1].endswith('</w>'):
-        word = word[:-1] + (word[-1].replace('</w>',''),)
+        word = word[:-1] + (word[-1].replace('</w>', ''),)
 
     if vocab:
         word = check_vocab_and_split(word, bpe_codes_reverse, vocab, separator)
 
     cache[orig] = word
     return word
+
 
 def recursive_split(segment, bpe_codes, vocab, separator, final=False):
     """Recursively split segment into smaller units (by reversing BPE merges)
@@ -179,7 +183,7 @@ def recursive_split(segment, bpe_codes, vocab, separator, final=False):
         else:
             left, right = bpe_codes[segment]
     except:
-        #sys.stderr.write('cannot split {0} further.\n'.format(segment))
+        # sys.stderr.write('cannot split {0} further.\n'.format(segment))
         yield segment
         return
 
@@ -195,6 +199,7 @@ def recursive_split(segment, bpe_codes, vocab, separator, final=False):
         for item in recursive_split(right, bpe_codes, vocab, separator, final):
             yield item
 
+
 def check_vocab_and_split(orig, bpe_codes, vocab, separator):
     """Check for each segment in word if it is in-vocabulary,
     and segment OOV segments into smaller units by reversing the BPE merge operations"""
@@ -205,7 +210,7 @@ def check_vocab_and_split(orig, bpe_codes, vocab, separator):
         if segment + separator in vocab:
             out.append(segment)
         else:
-            #sys.stderr.write('OOV: {0}\n'.format(segment))
+            # sys.stderr.write('OOV: {0}\n'.format(segment))
             for item in recursive_split(segment, bpe_codes, vocab, separator, False):
                 out.append(item)
 
@@ -213,7 +218,7 @@ def check_vocab_and_split(orig, bpe_codes, vocab, separator):
     if segment in vocab:
         out.append(segment)
     else:
-        #sys.stderr.write('OOV: {0}\n'.format(segment))
+        # sys.stderr.write('OOV: {0}\n'.format(segment))
         for item in recursive_split(segment, bpe_codes, vocab, separator, True):
             out.append(item)
 
@@ -234,6 +239,7 @@ def read_vocabulary(vocab_file, threshold):
 
     return vocabulary
 
+
 def isolate_glossary(word, glossary):
     """
     Isolate a glossary present inside a word.
@@ -252,16 +258,28 @@ def isolate_glossary(word, glossary):
 
 
 if __name__ == '__main__':
-    bpe_code = "/Users/zhaocq/Documents/gitdownload/struct2struct/testdata/codes.src"
-    src = "/Users/zhaocq/Documents/gitdownload/struct2struct/testdata/toy.zh"
+    bpe_code = "/Users/zhaocq/Documents/gitdownload/MT-data-processing/wmt17_de_en/bpe"
+    vocab = "/Users/zhaocq/Documents/gitdownload/MT-data-processing/wmt17_de_en/vocab.en"
+    # src = "/Users/zhaocq/Documents/gitdownload/MT-data-processing/wmt17_de_en/toy.zh"
 
     # bpe = BPE(bpe_code, "@@")
     # with codecs.open(src, encoding='utf-8') as fp:
     #     for line in fp:
     #         print(bpe.encode(line).strip())
     #         break
-    bpe = BPE(bpe_code, "@@")
-    with open(src, "r") as fp:
-        for line in fp:
-            print (bpe.encode(line.decode("utf-8")).strip())
-            break
+
+    bpe = BPE(bpe_code, "@@", vocab, 50)
+    print (bpe.encode("they are run by the South Westphalia Transport Services ( Verkehrsbetriebe Westfalen @-@ Süd ; VWS ) whose headquarters are in Siegen ."))
+
+    # mei dai vocabulary
+    # they are run by the South Westphalia Transport Services ( Verkehrs@@ betriebe Westfalen @-@ Süd ; V@@ WS ) whose headquarters are in Siegen .
+    # they are run by the South Westphalia Transport Services ( Verkehrs@@ betriebe Westfalen @-@ Süd ; V@@ WS ) whose headquarters are in Siegen .
+
+    # dai le vocabulary
+    # they are run by the South Westphalia Transport Services ( Verkehrs@@ bet@@ rie@@ be Westfalen @-@ Süd ; V@@ WS ) whose headquarters are in Siegen .
+    # they are run by the South Westphalia Transport Services ( Verkehrs@@ bet@@ rie@@ be Westfalen @-@ Süd ; V@@ WS ) whose headquarters are in Siegen .
+
+    # with open(src, "r") as fp:
+    #     for line in fp:
+    #         print (bpe.encode(line.decode("utf-8")).strip())
+    #         break

@@ -425,25 +425,16 @@ class ParallelTextInputter(TextInputter):
             assert len(self._features_buffer) == len(self._labels_buffer), "Buffer size mismatch"
             if len(self._features_buffer) < self._parent._batch_size:
                 cnt = len(self._features_buffer)
-                tmp_features_buf = []
-                tmp_labels_buf = []
                 while cnt < self._parent._cache_size:
                     ss = self._next_features()
                     tt = self._next_labels()
-                    # ss = next_line(self._features, self._maximum_features_length)
-                    # tt = next_line(self._labels, self._parent._maximum_labels_length)
                     if ss == "" or tt == "":
                         break
                     if ss is None or tt is None:
                         continue
                     cnt += 1
-                    # tmp_features_buf.append(ss)
-                    # tmp_labels_buf.append(tt)
                     self._features_buffer.append(ss)
                     self._labels_buffer.append(tt)
-                # if len(tmp_features_buf) > 0:
-                #     self._features_buffer.extend(map(self._parent._vocab_source, tmp_features_buf))
-                #     self._labels_buffer.extend(map(self._parent._vocab_target, tmp_labels_buf))
                 if len(self._features_buffer) == 0 or len(self._labels_buffer) == 0:
                     self._end_of_data = False
                     self._reset()
