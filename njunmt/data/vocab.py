@@ -100,7 +100,7 @@ class Vocab(object):
         if bpe_codes_file and not bpe_codes_file == "":
             if not gfile.Exists(bpe_codes_file):
                 raise ValueError("bpe_codes_file: {} not exists".format(bpe_codes_file))
-            self._bpe = BPE(bpe_codes_file)
+            self._bpe = BPE(bpe_codes_file, vocab=filename)
 
     @property
     def sos_id(self):
