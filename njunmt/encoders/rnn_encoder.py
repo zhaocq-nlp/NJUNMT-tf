@@ -154,6 +154,6 @@ class UnidirectionalRNNEncoder(Encoder):
 
         return self._encoder_output_tuple_type(
             outputs=outputs,
-            final_states=states[-1],
+            final_statest=states[-1],
             attention_values=outputs,
             attention_length=feature_length)

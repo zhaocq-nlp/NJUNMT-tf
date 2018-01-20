@@ -26,6 +26,7 @@ from njunmt.layers.common_layers import dropout_wrapper
 from njunmt.layers.common_layers import layer_preprocess
 from njunmt.layers.common_layers import layer_postprocessing
 from njunmt.layers.common_layers import transformer_ffn_layer
+from njunmt.layers.common_attention import MultiHeadAttention
 from njunmt.layers.common_attention import attention_bias_ignore_padding
 from njunmt.layers.common_attention import embedding_to_padding
 from njunmt.layers.common_attention import attention_bias_lower_triangle
@@ -196,10 +197,7 @@ class TransformerDecoder(Decoder):
         if hasattr(encoder_output, "attention_bias"):
             attention_bias = encoder_output.attention_bias
         else:
-            # [batch_size, timesteps], 1.0 for padding, 0.0 for non-padding
-            input_padding = embedding_to_padding(None, attention_length)
-            # [batch_size, 1, 1, timesteps], FLOAT_MIN for padding, 0.0 for non-padding
-            attention_bias = attention_bias_ignore_padding(input_padding)
+            attention_bias = MultiHeadAttention.attention_length_to_bias(None, attention_length)
         decoding_params = (attention_values, attention_length, attention_bias)
         # use a constant as the placeholder for while_loop
         return tf.constant(1.0, dtype=tf.float32), decoding_params

@@ -72,6 +72,23 @@ class BaseAttention(Configurable):
             params=params, mode=mode, verbose=False,
             name=name or self.__class__.__name__)
 
+    @staticmethod
+    def attention_length_to_bias(memory, memory_length):
+        """ Creates memory bias for attention weight.
+
+        Args:
+            memory: Attention values tensor with shape
+              [batch_size, num_of_values, channels_value].
+            memory_length: The number of attention values, a
+              Tensor with shape [batch_size,].
+
+        Returns: A float Tensor with shape [batch_size, num_of_values],
+            where FLOAT_MIN for padding and 0.0 for non-padding.
+        """
+        memory_padding = embedding_to_padding(memory, memory_length)
+        memory_bias = memory_padding * FLOAT_MIN
+        return memory_bias
+
     @abstractproperty
     def attention_units(self):
         """ Returns the number of units of this attention mechanism. """
@@ -117,8 +134,7 @@ class BaseAttention(Configurable):
               [batch_size, num_of_values, channels_value].
             memory_length: The number of attention values, a
               Tensor with shape [batch_size,].
-            memory_bias: The bias tensor for attention values,
-              not used here.
+            memory_bias: The bias tensor for attention values.
             query_is_projected: Whether the `query` is already projected.
             key_is_projected: Whether the `keys` is already projected.
 
@@ -136,8 +152,7 @@ class BaseAttention(Configurable):
 
             if memory_bias is None:
                 if memory_length is not None:
-                    memory_padding = embedding_to_padding(memory, memory_length)
-                    memory_bias = memory_padding * FLOAT_MIN
+                    memory_bias = BaseAttention.attention_length_to_bias(memory, memory_length)
 
             # attention weights: [batch_size, num_of_values]
             attention_weight = self.att_fn(query, keys, memory_bias)
@@ -331,6 +346,23 @@ class MultiHeadAttention(BaseAttention):
         assert self.params["attention_type"] in ["dot_product"], (
             "only attention_type=\"dot_product\" is available in MultiHeadAttention")
 
+    @staticmethod
+    def attention_length_to_bias(memory, memory_length):
+        """ Creates memory bias for attention weight.
+
+        Args:
+            memory: Attention values tensor with shape
+              [batch_size, num_of_values, channels_value].
+            memory_length: The number of attention values, a
+              Tensor with shape [batch_size,].
+
+        Returns: A float Tensor with shape [batch_size, 1, 1, num_of_values],
+            where FLOAT_MIN for padding and 0.0 for non-padding.
+        """
+        input_padding = embedding_to_padding(memory, memory_length)
+        memory_bias = attention_bias_ignore_padding(input_padding)
+        return memory_bias
+
     @property
     def attention_units(self):
         """ Returns the number of units of this attention mechanism. """
@@ -405,9 +437,7 @@ class MultiHeadAttention(BaseAttention):
             if memory_bias is None:
                 if memory_length is not None:
                     assert query is not None, "Unseen error may occur. Please CHECK."
-                    input_padding = embedding_to_padding(memory, memory_length)
-                    # [batch_size, 1, 1, timesteps], FLOAT_MIN for padding, 0.0 for non-padding
-                    memory_bias = attention_bias_ignore_padding(input_padding)
+                    memory_bias = MultiHeadAttention.attention_length_to_bias(memory, memory_length)
 
             # compute attention weight, [batch_size, num_heads, length_q, length_k]
             attention_weight = self.att_fn(q, k, memory_bias)

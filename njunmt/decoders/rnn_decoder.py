@@ -134,14 +134,19 @@ class CondAttentionDecoder(Decoder):
           and will be passed to `step()` function.
         """
         attention_values = encoder_output.attention_values
-        attention_length = encoder_output.attention_length
+        if hasattr(encoder_output, "attention_bias"):
+            attention_bias = encoder_output.attention_bias
+        else:
+            attention_length = encoder_output.attention_length
+            attention_bias = getattr(eval(self.params["attention.class"]),
+                                     "attention_length_to_bias")(None, attention_length)
         with tf.variable_scope(self._attention.name):
             projected_attention_keys = fflayer(
                 inputs=attention_values, output_size=self._attention.attention_units,
                 dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
                 activation=None, name="ff_att_keys")
         init_rnn_states = bridge(self._r_rnn_cells.state_size)
-        decoding_params = (projected_attention_keys, attention_values, attention_length)
+        decoding_params = (projected_attention_keys, attention_values, attention_bias)
 
         return init_rnn_states, decoding_params
 
@@ -197,7 +202,7 @@ class CondAttentionDecoder(Decoder):
           `cur_decoder_states` must have the same structure with
           `decoder_states`.
         """
-        projected_attention_keys, attention_values, attention_length = decoding_params
+        projected_attention_keys, attention_values, attention_bias = decoding_params
         # layer0: get hidden1
         cell_output0, cell_state0 = self._cond_rnn_cell(decoder_input, decoder_states[0])
 
@@ -207,7 +212,7 @@ class CondAttentionDecoder(Decoder):
             query=cell_output0, query_is_projected=False,
             keys=projected_attention_keys, key_is_projected=True,
             memory=attention_values,
-            memory_length=attention_length)
+            memory_bias=attention_bias)
         # hidden1's state is the hidden2 's initial state
         following_decoder_state = tuple([cell_state0] + list(decoder_states[1:]))
         cell_output, cell_states = self._r_rnn_cells(
@@ -317,15 +322,20 @@ class AttentionDecoder(Decoder):
           and will be passed to `step()` function.
         """
         attention_values = encoder_output.attention_values  # [batch_size, timesteps, dim_context]
-        attention_length = encoder_output.attention_length
+        if hasattr(encoder_output, "attention_bias"):
+            attention_bias = encoder_output.attention_bias
+        else:
+            attention_length = encoder_output.attention_length
+            attention_bias = getattr(eval(self.params["attention.class"]),
+                                     "attention_length_to_bias")(None, attention_length)
         with tf.variable_scope(self._attention.name):
             projected_attention_keys = fflayer(
                 inputs=attention_values, output_size=self._attention.attention_units,
                 dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
                 activation=None, name="ff_att_keys")
         init_rnn_states = bridge(self._rnn_cells.state_size)
-        init_att_context = tf.zeros_like(attention_values[:, 0, :], dtype=tf.float32)
-        decoding_params = (projected_attention_keys, attention_values, attention_length)
+        init_att_context = tf.zeros_like(projected_attention_keys[:, 0, :], dtype=tf.float32)
+        decoding_params = (projected_attention_keys, attention_values, attention_bias)
 
         return (init_rnn_states, init_att_context), decoding_params
 
@@ -383,7 +393,7 @@ class AttentionDecoder(Decoder):
           `decoder_states`.
         """
         rnn_states, prev_attention_context = decoder_states
-        projected_attention_keys, attention_values, attention_length = decoding_params
+        projected_attention_keys, attention_values, attention_bias = decoding_params
         # run RNN
         cell_output, cell_states = self._rnn_cells(
             tf.concat([decoder_input, prev_attention_context], axis=1),
@@ -395,7 +405,7 @@ class AttentionDecoder(Decoder):
             query=cell_output, query_is_projected=False,
             keys=projected_attention_keys, key_is_projected=True,
             memory=attention_values,
-            memory_length=attention_length)
+            memory_bias=attention_bias)
 
         outputs = self._DecoderOutputSpec(
             cur_decoder_hidden=cell_output,

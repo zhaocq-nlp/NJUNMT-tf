@@ -25,8 +25,7 @@ from njunmt.layers.common_layers import dropout_wrapper
 from njunmt.layers.common_layers import layer_postprocessing
 from njunmt.layers.common_layers import layer_preprocess
 from njunmt.layers.common_layers import transformer_ffn_layer
-from njunmt.layers.common_attention import embedding_to_padding
-from njunmt.layers.common_attention import attention_bias_ignore_padding
+from njunmt.layers.common_attention import MultiHeadAttention
 from njunmt.layers.common_attention import attention_bias_to_padding
 from njunmt.layers.common_attention import multihead_attention_layer
 
@@ -49,7 +48,7 @@ class TransformerEncoder(Encoder):
 
         self.encoder_output_tuple_type = namedtuple(
             "EncoderOutput",
-            "outputs attention_bias attention_values attention_length")
+            "outputs attention_values attention_length")
 
     @staticmethod
     def default_params():
@@ -79,15 +78,12 @@ class TransformerEncoder(Encoder):
         with tf.variable_scope(input_modality.name):
             inputs = input_modality.bottom(feature_ids)
         with tf.variable_scope(self.name) as vs:
-            # [batch_size, timesteps], 1.0 for padding, 0.0 for non-padding
-            input_padding = embedding_to_padding(inputs, feature_length)
             # [batch_size, 1, 1, timesteps], FLOAT_MIN for padding, 0.0 for non-padding
-            encoder_attention_bias = attention_bias_ignore_padding(input_padding)
+            encoder_attention_bias = MultiHeadAttention.attention_length_to_bias(inputs, feature_length)
             outputs = self._transform(inputs, encoder_attention_bias, scope=vs, **kwargs)
             encoder_output = self.encoder_output_tuple_type(
                 # [batch_size, timesteps, dim]
                 outputs=outputs,
-                attention_bias=encoder_attention_bias,
                 attention_values=outputs,
                 attention_length=feature_length)
             return encoder_output
