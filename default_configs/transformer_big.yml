@@ -4,11 +4,11 @@ metrics:
     params:
       start_at: 0
       eval_steps: 100
-      batch_size: 128
+      batch_size: 64
 
   - class: BleuMetricSpec
     params:
-      start_at: 20000
+      start_at: 30000
       eval_steps: 1000
       batch_size: 32
       beam_size: 4
