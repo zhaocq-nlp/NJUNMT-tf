@@ -17,6 +17,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow.python.util import nest
 
 from njunmt.utils.global_names import ModeKeys
 from njunmt.utils.global_names import GlobalNames
@@ -129,3 +130,38 @@ class Transformer(BaseSeq2Seq):
         Returns: A `variance_scaling_initializer` (for deep models).
         """
         return tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode="FAN_AVG", uniform=True)
+
+    def _pack_output(self,
+                     encoder_output,
+                     decoder_output,
+                     infer_status,
+                     target_modality,
+                     **kwargs):
+        """ Packs model outputs.
+
+        Args:
+            encoder_output: An instance of `collections.namedtuple`
+              from `Encoder.encode()`.
+            decoder_output: An instance of `collections.namedtuple`
+              whose element types are defined by `Decoder.output_dtype`
+              property.
+            infer_status: An instance of `collections.namedtuple`
+              whose element types are defined by `BeamSearchStateSpec`,
+              indicating the status of beam search if mode==INFER, else,
+              a logits Tensor with shape [timesteps, batch_size, vocab_size].
+            target_modality: An instance of `Modality`.
+            **kwargs:
+
+        Returns: A dictionary containing inference status if mode==INFER,
+         else a list with the first element be `loss`.
+        """
+        base_output = super(Transformer, self)._pack_output(
+            encoder_output, decoder_output, infer_status, target_modality, **kwargs)
+        if self.mode == ModeKeys.INFER:
+            if hasattr(encoder_output, "encoder_self_attention"):
+                # A list of tensors, each tensor has shape [batch_size, num_heads, length_q, length_k]
+                att = getattr(encoder_output, "encoder_self_attention")
+                if self.params["source.reverse"]:
+                    raise NotImplementedError
+                base_output["encoder_self_attention"] = att
+        return base_output

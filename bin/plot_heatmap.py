@@ -98,7 +98,9 @@ def read_plot_alignment_matrices(f, target_file=None, vocab_file=None, start=0):
         if idx < start: continue
         source_labels = att["source"].split() + ["SEQUENCE_END"]
         target_labels = att["translation"].split()
-        mma = numpy.array(att["attention"])
+        att_list = att["attentions"]
+        assert att_list[0]["type"] == "simple", "Do not use this tool for multihead attention."
+        mma = numpy.array(att_list[0]["value"])
         if mma.shape[0] == len(target_labels) + 1:
             target_labels += ["SEQUENCE_END"]
 

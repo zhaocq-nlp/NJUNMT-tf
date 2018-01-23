@@ -449,9 +449,11 @@ class MultiHeadAttention(BaseAttention):
             # linear transform
             attention_context = conv1d(attention_context, self._output_depth, kernel_size=1,
                                        name="output_transform")
-            # TODO here the dimension of attention_weight is not checked for output_attention
             if query_is_2d:
+                # attention context: [batch_size, depth_value]
                 attention_context = tf.squeeze(attention_context, axis=1)
+                # attention weight: [batch_size, num_heads, length_k]
+                attention_weight = tf.squeeze(attention_weight, axis=2)
             return attention_weight, attention_context
 
     def _compute_qkv(self, query, keys, memory,

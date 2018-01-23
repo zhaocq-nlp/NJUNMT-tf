@@ -107,10 +107,11 @@ class AttentionSeq2Seq(BaseSeq2Seq):
         if hasattr(decoder_output, "attention_scores"):
             att = decoder_output.attention_scores
             if self.params["source.reverse"]:
-                att = tf.reverse_sequence(
-                    input=decoder_output.attention_scores,  # [n_timesteps_trg, batch_size, n_timesteps_src]
-                    seq_lengths=kwargs[GlobalNames.PH_FEATURE_IDS_NAME],
-                    batch_axis=1, seq_axis=2)
+                raise NotImplementedError
+                # att = tf.reverse_sequence(
+                #     input=decoder_output.attention_scores,  # [n_timesteps_trg, batch_size, n_timesteps_src]
+                #     seq_lengths=kwargs[GlobalNames.PH_FEATURE_IDS_NAME],
+                #     batch_axis=1, seq_axis=2)
         if att is not None:
             if self.mode == ModeKeys.INFER:
                 base_output["attention_scores"] = att

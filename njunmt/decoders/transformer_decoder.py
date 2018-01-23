@@ -293,6 +293,7 @@ class TransformerDecoder(Decoder):
                         x=y, previous_x=x,
                         process_sequence=self.params["layer_postprocess_sequence"],
                         dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"])
-        return layer_preprocess(
+        x = layer_preprocess(
             x=x, process_sequence=self.params["layer_preprocess_sequence"],
             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"])
+        return x

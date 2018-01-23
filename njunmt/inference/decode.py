@@ -25,6 +25,8 @@ import re
 import tensorflow as tf
 from tensorflow import gfile
 
+from njunmt.inference.attention import process_attention
+from njunmt.inference.attention import pack_batch_attention_dict
 from njunmt.utils.global_names import GlobalNames
 from njunmt.utils.misc import padding_batch_data
 
@@ -165,15 +167,8 @@ def _infer(
     argidx += numpy.tile(numpy.arange(batch_size) * beam_size, [beam_size, 1]).transpose()
     argidx = numpy.reshape(argidx[:, :top_k], -1)
 
-    if "attention_scores" in predict_out:
-        # [n_timesteps_trg, batch_size * beam_size, n_timesteps_src]
-        attention_scores = predict_out["attention_scores"]
-        gathered_att = numpy.zeros_like(attention_scores)
-        for idx in range(beam_ids.shape[0]):
-            gathered_att = gathered_att[:, beam_ids[idx], :]
-            gathered_att[idx, :, :] = attention_scores[idx]
-        return gathered_pred_ids[argidx, :], gathered_att[:, argidx, :]
-    return gathered_pred_ids[argidx, :], None
+    attentions = process_attention(predict_out, argidx)
+    return gathered_pred_ids[argidx, :], attentions
 
 
 def infer_sentences(
@@ -256,7 +251,8 @@ def infer(
     with gfile.GFile(output, "w") as fw:
         cnt = 0
         for x_str, x_len, feeding_batch in feeding_data:
-            prediction, att = _infer(sess, feeding_batch, prediction_op, len(x_str), alpha=alpha, top_k=1)
+            prediction, att = _infer(sess, feeding_batch, prediction_op,
+                                     len(x_str), alpha=alpha, top_k=1)
             y_str = [delimiter.join(vocab_target.convert_to_wordlist(prediction[sample_idx]))
                      for sample_idx in range(prediction.shape[0])]
             fw.write('\n'.join(y_str) + "\n")
@@ -267,15 +263,16 @@ def infer(
                     samples_trg.append(y_str[sample_idx])
                     if len(samples_src) >= 5:
                         break
+
             # output attention
             if output_attention and att is not None:
-                for idx in range(len(x_str)):
-                    trans_list = vocab_target.convert_to_wordlist(
-                        prediction[idx, :], bpe_decoding=False, reverse_seq=False)
-                    attentions[cnt + idx] = {
-                        "source": x_str[idx],
-                        "translation": " ".join(trans_list),
-                        "attention": att[:len(trans_list) + 1, idx, :x_len[idx]].tolist()}
+                source_tokens = [x.strip().split() for x in x_str]
+                candidate_tokens = [vocab_target.convert_to_wordlist(
+                    prediction[idx, :], bpe_decoding=False, reverse_seq=False)
+                                    for idx in range(len(x_str))]
+
+                attentions.update(pack_batch_attention_dict(
+                    cnt, source_tokens, candidate_tokens, att))
             cnt += len(x_str)
             if verbose:
                 tf.logging.info(cnt)
