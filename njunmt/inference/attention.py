@@ -63,6 +63,16 @@ def pack_batch_attention_dict(
         source_tokens,
         candidate_tokens,
         attentions):
+    """ Packs the attention information into a dictionary for visualization.
+
+    Args:
+        base_index: An integer.
+        source_tokens: A list of samples. Each sample is a list of string tokens.
+        candidate_tokens: A list of sample candidate. Each sample candidate is a list of string tokens.
+        attentions: A dict of attentions.
+
+    Returns: A packed dictionary of attention information for visualization.
+    """
     ret_attentions = dict()
     for idx in range(len(source_tokens)):
         att = {"source": " ".join(source_tokens[idx]),
