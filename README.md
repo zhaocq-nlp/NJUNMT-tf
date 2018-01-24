@@ -26,7 +26,7 @@ The code also supports:
 
 ## Requirements
 
-- `tensorflow` (`1.2.1`)
+- `tensorflow` (`>=1.4`)
 - `pyyaml`
 
 
