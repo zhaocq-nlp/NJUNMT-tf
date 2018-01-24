@@ -20,6 +20,7 @@ from __future__ import print_function
 from abc import abstractmethod, abstractproperty
 import tensorflow as tf
 
+from njunmt.utils.misc import deprecated
 from njunmt.layers.common_layers import fflayer
 from njunmt.layers.common_layers import conv1d
 from njunmt.layers.common_layers import dropout_wrapper
@@ -72,6 +73,12 @@ class BaseAttention(Configurable):
             params=params, mode=mode, verbose=False,
             name=name or self.__class__.__name__)
 
+    @property
+    def attention_value_depth(self):
+        """Returns the depth of attention values, -1 denotes it is the
+        same as the `memory` provided for `build()`."""
+        return -1
+
     @staticmethod
     def attention_length_to_bias(memory, memory_length):
         """ Creates memory bias for attention weight.
@@ -117,12 +124,10 @@ class BaseAttention(Configurable):
 
     def build(self,
               query,
-              keys,
               memory,
               memory_length=None,
               memory_bias=None,
-              query_is_projected=True,
-              key_is_projected=True):
+              cache=None):
         """ Builds attention context via a simple process.
 
         Args:
@@ -137,18 +142,20 @@ class BaseAttention(Configurable):
             memory_bias: The bias tensor for attention values.
             query_is_projected: Whether the `query` is already projected.
             key_is_projected: Whether the `keys` is already projected.
+            cache: A dictionary containing pre-projected keys and values.
+              This field is specifically for MultiHeadAttention.
 
         Returns: A tuple `(attention_scores, attention_context)`. The
           `attention_scores` has shape [batch_size, num_of_values].
           The `attention_context` has shape [batch_size, channels_value].
         """
+        _ = cache
         with tf.variable_scope(self.name):
-            if not query_is_projected:
-                query = fflayer(query, output_size=self.attention_units,
-                                activation=None, name="ff_att_query")
-            if not key_is_projected:
-                keys = fflayer(keys, output_size=self.attention_units,
-                               activation=None, name="ff_att_keys")
+            query = fflayer(query, output_size=self.attention_units,
+                            activation=None, name="ff_att_query")
+            keys = memory
+            if cache is not None and "attention_keys" in cache:
+                keys = cache["attention_keys"]
 
             if memory_bias is None:
                 if memory_length is not None:
@@ -280,39 +287,6 @@ def dot_product_attention(q, k, bias=None, dropout_keep_prob=1.0):
         return weights
 
 
-def multihead_attention_layer(params,
-                              mode,
-                              query_antecedent,
-                              memory_antecedent,
-                              memory_bias,
-                              name=None):
-    """ Multi-head scaled-dot-product attention with input/output
-      transformations.
-
-    Args:
-        params: A dictionary of parameters to construct the
-          attention architecture.
-        mode: A mode.
-        query_antecedent: A Tensor with shape [batch_size, length_q, channels_query],
-          if not provided (None), means self attention and `query_antecedent` will be
-          the same as `memory_antecedent`.
-        memory_antecedent: A Tensor with shape [batch_size, length_m, channels_memory]
-        memory_bias: A bias Tensor for `memory_antecedent`.
-        name: The name of this attention.
-
-    Returns: The result of the attention transformation. The output shape is
-      [batch_size, length_q, hidden_dim].
-    """
-    cls = MultiHeadAttention(params, mode, name)
-    return cls.build(
-        query=query_antecedent,
-        keys=None,
-        memory=memory_antecedent,
-        memory_bias=memory_bias,
-        key_is_projected=False,
-        query_is_projected=False)
-
-
 class MultiHeadAttention(BaseAttention):
     """ Class of multi-head scaled-dot-product attention with input/output
       transformations.
@@ -345,6 +319,12 @@ class MultiHeadAttention(BaseAttention):
     def _check_parameters(self):
         assert self.params["attention_type"] in ["dot_product"], (
             "only attention_type=\"dot_product\" is available in MultiHeadAttention")
+
+    @property
+    def attention_value_depth(self):
+        """Returns the depth of attention values, -1 denotes it is the
+        same as the `memory` provided for `build()`."""
+        return self._attention_value_depth
 
     @staticmethod
     def attention_length_to_bias(memory, memory_length):
@@ -383,23 +363,19 @@ class MultiHeadAttention(BaseAttention):
 
     def build(self,
               query,
-              keys,
               memory,
               memory_length=None,
               memory_bias=None,
-              query_is_projected=False,
-              key_is_projected=False):
+              cache=None):
         """ Builds attention context.
 
         Args:
             query: Attention query tensor with shape [batch_size, length_q, channels_query].
               If None, it indicates self-attention.
-            keys: Attention keys tensor with shape [batch_size, length_k, channels_key].
             memory: Attention values tensor with shape [batch_size, length_m, channels_value].
             memory_length: The number of attention values, [batch_size,].
             memory_bias: The bias tensor for attention values with shape [batch_size, 1, 1, timesteps].
-            query_is_projected: Whether the `query` is already projected.
-            key_is_projected: Whether the `keys` is already projected.
+            cache: A dictionary containing pre-projected keys and values.
 
         Returns: The result of the attention transformation. A tuple
         `(attention_scores, attention_context)`. The `attention_scores`
@@ -413,9 +389,17 @@ class MultiHeadAttention(BaseAttention):
                 query_is_2d = True
                 query = tf.expand_dims(query, axis=1)
             # compute q, k, v
-            q, k, v = self._compute_qkv(query, keys, memory,
-                                        query_is_projected=query_is_projected,
-                                        key_is_projected=key_is_projected)
+            if cache is not None and "attention_keys" in cache:
+                # here is for multi head attention in seq2seq model
+                q, k, v = self._compute_qkv(query, cache["attention_keys"], memory)
+            else:
+                q, k, v = self._compute_qkv(query, None, memory)
+            if cache is not None and "attention_keys" not in cache:
+                # here is for TransformerDecoder
+                k = tf.concat([cache["keys"], k], axis=1)
+                v = tf.concat([cache["values"], v], axis=1)
+                cache["keys"] = k
+                cache["values"] = v
 
             # after split_last_dimension: [batch_size, length, depth]
             #           ==> [batch_size, length, num_heads, depth/num_heads]
@@ -456,8 +440,7 @@ class MultiHeadAttention(BaseAttention):
                 attention_weight = tf.squeeze(attention_weight, axis=2)
             return attention_weight, attention_context
 
-    def _compute_qkv(self, query, keys, memory,
-                     query_is_projected=False, key_is_projected=False):
+    def _compute_qkv(self, query, keys, memory):
         """ Computes linear transformations of query, key
          and value.
 
@@ -467,8 +450,7 @@ class MultiHeadAttention(BaseAttention):
             keys: Attention keys tensor with shape [batch_size, length_k, channels_key].
             memory: Attention values tensor with shape
               [batch_size, length_m, channels_value]
-            query_is_projected: Whether the `query` is already projected.
-            key_is_projected: Whether the `keys` is already projected.
+
         Returns: A tuple `(query_transformed, key_transformed,
           memory_transformed)`.
         """
@@ -486,17 +468,14 @@ class MultiHeadAttention(BaseAttention):
                 axis=2)
             return q, k, v
         else:
-            # encoder-decoder attention
-            if query_is_projected:
-                q = query
-            else:
-                q = conv1d(
-                    query,
-                    self._attention_key_depth,
-                    kernel_size=1,
-                    name="q_transform",
-                    padding="VALID")
-            if key_is_projected:
+            # encoder-decoder attention or self-attention step-by-step
+            q = conv1d(
+                query,
+                self._attention_key_depth,
+                kernel_size=1,
+                name="q_transform",
+                padding="VALID")
+            if keys is not None:
                 k = keys
                 v = conv1d(memory,
                            self._attention_value_depth,

@@ -28,7 +28,6 @@ from njunmt.layers.common_layers import layer_preprocess
 from njunmt.layers.common_layers import transformer_ffn_layer
 from njunmt.layers.common_attention import MultiHeadAttention
 from njunmt.layers.common_attention import attention_bias_to_padding
-from njunmt.layers.common_attention import multihead_attention_layer
 
 
 class TransformerEncoder(Encoder):
@@ -46,6 +45,11 @@ class TransformerEncoder(Encoder):
             verbose: Print encoder parameters if set True.
         """
         super(TransformerEncoder, self).__init__(params=params, mode=mode, name=name, verbose=verbose)
+
+        self._self_attention_layers = []
+        for layer in range(self.params["num_layers"]):
+            self._self_attention_layers.append(
+                MultiHeadAttention(self.params["selfattention.params"], self.mode))
 
         if self.mode == ModeKeys.INFER:
             self.encoder_output_tuple_type = namedtuple(
@@ -123,11 +127,9 @@ class TransformerEncoder(Encoder):
             with tf.variable_scope("layer_%d" % layer):
                 with tf.variable_scope("self_attention"):
                     # self attention layer
-                    w_y, y = multihead_attention_layer(
-                        params=self.params["selfattention.params"],
-                        mode=self.mode,
-                        query_antecedent=None,
-                        memory_antecedent=layer_preprocess(
+                    w_y, y = self._self_attention_layers[layer].build(
+                        query=None,
+                        memory=layer_preprocess(
                             x=x, process_sequence=self.params["layer_preprocess_sequence"],
                             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"]),
                         memory_bias=encoder_self_attention_bias)

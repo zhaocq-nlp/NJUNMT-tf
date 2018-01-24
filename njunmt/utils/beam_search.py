@@ -40,7 +40,7 @@ def stack_beam_size(tensors, beam_size):
     """ Stacks the tensors `beam_size` times at specific dimension.
 
     Args:
-        tensors: A Tensor of a list/tuple of Tensors. For each Tensor, the first
+        tensors: A Tensor of a list/tuple/dict of Tensors. For each Tensor, the first
           dimension must be batch_size, otherwise, unknow errors may occur.
         beam_size: A python integer, the beam width.
 
@@ -52,9 +52,6 @@ def stack_beam_size(tensors, beam_size):
           [batch_size, 1, 1, timesteps] when tensor.ndims == 4.
         NotImplementedError: if tensor.ndims > 4.
     """
-    # To hold the special field: constant integer
-    if isinstance(tensors, tf.Tensor) and tensors.get_shape().ndims == 0:
-        return tensors
 
     def _stack(x):
         assert isinstance(x, tf.Tensor)
@@ -90,16 +87,13 @@ def gather_states(states, beam_ids):
     """ Gathers states according to beam ids.
 
     Args:
-        states: A Tensor of a list/tuple of Tensors. For each Tensor, the first
+        states: A Tensor of a list/tuple/dict of Tensors. For each Tensor, the first
           dimension must be batch_size, otherwise, unknow errors may occur.
         beam_ids: A tensor with shape [batch_size, ] that used to gather states.
 
     Returns: A Tensor or a list/tuple of Tensors with the same structure
       as `states`.
     """
-    # To hold the special field: constant integer
-    if isinstance(states, tf.Tensor) and states.get_shape().ndims == 0:
-        return states
 
     def _gather(x):
         assert isinstance(x, tf.Tensor)

@@ -21,16 +21,14 @@ from collections import namedtuple
 
 from njunmt.utils.global_names import ModeKeys
 from njunmt.decoders.decoder import dynamic_decode
+from njunmt.decoders.decoder import initialize_cache
 from njunmt.decoders.decoder import Decoder
 from njunmt.layers.common_layers import dropout_wrapper
 from njunmt.layers.common_layers import layer_preprocess
 from njunmt.layers.common_layers import layer_postprocessing
 from njunmt.layers.common_layers import transformer_ffn_layer
 from njunmt.layers.common_attention import MultiHeadAttention
-from njunmt.layers.common_attention import attention_bias_ignore_padding
-from njunmt.layers.common_attention import embedding_to_padding
 from njunmt.layers.common_attention import attention_bias_lower_triangle
-from njunmt.layers.common_attention import multihead_attention_layer
 
 
 class TransformerDecoder(Decoder):
@@ -52,6 +50,15 @@ class TransformerDecoder(Decoder):
             verbose: Print decoder parameters if set True.
         """
         super(TransformerDecoder, self).__init__(params, mode, name, verbose)
+
+        self._self_attention_layers = []
+        self._encdec_attention_layers = []
+        for layer in range(self.params["num_layers"]):
+            self._self_attention_layers.append(
+                MultiHeadAttention(self.params["selfattention.params"], self.mode))
+            self._encdec_attention_layers.append(
+                MultiHeadAttention(self.params["attention.params"], self.mode))
+
         self._DecoderOutputSpec = namedtuple(
             "TransformerOutput", "decoder_hidden")
 
@@ -76,31 +83,6 @@ class TransformerDecoder(Decoder):
         the definition of decoder output types. """
         return self._DecoderOutputSpec(
             decoder_hidden=tf.float32)
-
-    def inputs_prepost_processing_fn(self):
-        """ This function is for generalization purpose. For `tf.while_loop`
-        in `dynamic_decode` function, reshape the input tensor to
-        [batch_size, timesteps, dmodel], before it is passed to
-        `step()` fn, and set the input tensor to [None, dmodel]
-        before it is passed to `tf.while_loop`.
-
-        Returns: A tuple `(preprocessing_fn, postprocessing_fn)`.
-        """
-        preprocessing_fn = lambda time, inputs: \
-            tf.reshape(inputs, [-1, time + 1, inputs.get_shape().as_list()[-1]])
-
-        def postprocessing_fn(prev_inputs, predicted_inputs):
-            next_inputs = predicted_inputs
-            if prev_inputs is not None:
-                next_inputs = tf.concat(
-                    [prev_inputs, tf.expand_dims(predicted_inputs, axis=1)],
-                    axis=1)
-            dmodel = next_inputs.get_shape().as_list()[-1]
-            next_inputs = tf.reshape(next_inputs, [-1, dmodel])
-            next_inputs.set_shape([None, dmodel])
-            return next_inputs
-
-        return preprocessing_fn, postprocessing_fn
 
     def merge_top_features(self, decoder_output):
         """ Merges features of decoder top layers, as the input
@@ -160,8 +142,8 @@ class TransformerDecoder(Decoder):
             with tf.variable_scope(target_modality.name):
                 decoder_inputs = target_modality.targets_bottom(label_ids)
             with tf.variable_scope(self.name):
-                _, decoding_params = self.prepare(encoder_output, None, helper)
-                outputs = self._transform(decoder_inputs, decoding_params)  # [batch_size, time, dim]
+                cache = self.prepare(encoder_output, None, helper)
+                outputs = self._transform(decoder_inputs, cache)  # [batch_size, time, dim]
                 final_outputs = self._DecoderOutputSpec(
                     decoder_hidden=outputs)
                 decoder_top_features = self.merge_top_features(final_outputs)
@@ -185,11 +167,10 @@ class TransformerDecoder(Decoder):
             bridge: None.
             helper: An instance of `Feedback` that samples next
               symbols from logits.
-        Returns: A tuple `(init_decoder_states, decoding_params)`.
-          `init_decoder_states` is a scalar float32 value, `tf.while_loop`
-          will loop on this value but do nothing (for generalization
-          purpose). `decoding_params` is a tuple containing attention
-          values and will be passed to `step()` function.
+
+        Returns: A dict containing decoder RNN states, pre-projected attention
+          keys, attention values and attention length, and will be passed
+          to `step()` function.
         """
         _ = bridge
         attention_values = encoder_output.attention_values
@@ -198,67 +179,88 @@ class TransformerDecoder(Decoder):
             attention_bias = encoder_output.attention_bias
         else:
             attention_bias = MultiHeadAttention.attention_length_to_bias(None, attention_length)
-        decoding_params = (attention_values, attention_length, attention_bias)
-        # use a constant as the placeholder for while_loop
-        return tf.constant(1.0, dtype=tf.float32), decoding_params
 
-    def step(self, decoder_input, decoder_states, decoding_params):
+        # initialize cache
+        if self.mode == ModeKeys.INFER:
+            decoding_states = {}
+            batch_size = tf.shape(attention_values)[0]
+            depth = self._self_attention_layers[0].attention_value_depth
+            if depth < 0:
+                # TODO please check when code goes into this condition
+                depth = tf.shape(attention_values)[2]
+            # initialize decoder self attention keys/values
+            for l in range(self.params["num_layers"]):
+                keys = tf.zeros([batch_size, 0, depth])
+                values = tf.zeros([batch_size, 0, depth])
+                # Ensure shape invariance for tf.while_loop.
+                keys._shape = tf.TensorShape([None, None, depth])
+                values._shape = tf.TensorShape([None, None, depth])
+                decoding_states["layer_{}".format(l)] = {
+                    "keys": keys, "values": values}
+        else:
+            decoding_states = None
+
+        init_cache = initialize_cache(
+            decoding_states=decoding_states,
+            memory=attention_values,
+            memory_bias=attention_bias)
+        return init_cache
+
+    def step(self, decoder_input, cache):
         """ Decodes one step.
 
         Args:
-            decoder_input: The decoder input for this timestep, an
-              instance of `tf.Tensor`, [batch_size, timesteps, dmodel].
-            decoder_states: Anything which is ignored here.
-            decoding_params: The same as `decoding_params` returned
-              from `prepare()` function.
+            decoder_input: The decoder input for this timestep.
+              A Tensor, with shape [batch_size, dmodel].
+            cache: A dict containing decoding states at previous
+              timestep, attention values and attention length.
 
-        Returns: A tuple `(cur_decoder_outputs, cur_decoder_states)`
-          at this timestep. The `cur_decoder_outputs` must be an
-          instance of `collections.namedtuple` whose element types
-          are defined by `output_dtype` property. The
-          `cur_decoder_states` is the same as the `decoder_states`.
+        Returns: A tuple `(cur_decoder_outputs, cur_cache)` at this timestep.
+          The `cur_decoder_outputs` must be an instance of `collections.namedtuple`
+          whose element types are defined by `output_dtype` property. The
+          `cur_cache` must have the same structure with `cache`.
 
         """
-        outputs = self._transform(decoder_input, decoding_params)
+        outputs = self._transform(tf.expand_dims(decoder_input, axis=1), cache)
         final_outputs = self._DecoderOutputSpec(decoder_hidden=outputs[:, -1, :])
         # loop on decoder_state, actually it is not used
-        return final_outputs, decoder_states
+        return final_outputs, cache
 
-    def _transform(self, decoder_inputs, decoding_params):
+    def _transform(self, decoder_inputs, cache):
         """ Decodes one step
 
         Args:
-            decoder_input: The decoder input for this timestep, an
-              instance of `tf.Tensor`, [batch_size, timesteps, dmodel].
-            decoding_params: The same as `decoding_params` returned
-              from `prepare()` function.
+            decoder_input: The decoder input for this timestep,
+              A Tensor, with shape [batch_size, timesteps, dmodel].
+              Note that when mode==INFER, timesteps=1.
+            cache: A dict containing decoding states at previous
+              timestep, attention values and attention length.
 
-        Returns: A Tensor, the transformed hidden
-          state of TransformerDecoder.
+        Returns: A transformed Tensor.
         """
         # [batch_size, max_len_src, dim]
-        encdec_attention_values = decoding_params[0]
-        # [batch_size, ]
-        # encdec_attention_length = decoding_params[1]
+        encdec_attention_values = cache["memory"]
         # [batch_size, 1, 1, max_len_src]
-        encdec_attention_bias = decoding_params[2]
+        encdec_attention_bias = cache["memory_bias"]
 
         # decoder_self_attention_bias: [1, 1, max_len_trg, max_len_trg]
         decoder_self_attention_bias = attention_bias_lower_triangle(
             tf.shape(decoder_inputs)[1])
         x = dropout_wrapper(decoder_inputs, self.params["layer_prepostprocess_dropout_keep_prob"])
         for layer in range(self.params["num_layers"]):
+            layer_name = "layer_{}".format(layer)
+            layer_cache = None if cache["decoding_states"] is None \
+                else cache["decoding_states"][layer_name]
             with tf.variable_scope("layer_%d" % layer):
                 with tf.variable_scope("self_attention"):
                     # self attention layer
-                    w_y, y = multihead_attention_layer(
-                        params=self.params["selfattention.params"],
-                        mode=self.mode,
-                        query_antecedent=None,
-                        memory_antecedent=layer_preprocess(
+                    w_y, y = self._self_attention_layers[layer].build(
+                        query=None,
+                        memory=layer_preprocess(
                             x=x, process_sequence=self.params["layer_preprocess_sequence"],
                             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"]),
-                        memory_bias=decoder_self_attention_bias)
+                        memory_bias=decoder_self_attention_bias,
+                        cache=layer_cache)
                     # apply dropout, layer norm, residual
                     x = layer_postprocessing(
                         x=y, previous_x=x,
@@ -266,13 +268,11 @@ class TransformerDecoder(Decoder):
                         dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"])
                 with tf.variable_scope("encdec_attention"):
                     # encoder-decoder attention
-                    w_y, y = multihead_attention_layer(
-                        params=self.params["attention.params"],
-                        mode=self.mode,
-                        query_antecedent=layer_preprocess(
+                    w_y, y = self._encdec_attention_layers[layer].build(
+                        query=layer_preprocess(
                             x=x, process_sequence=self.params["layer_preprocess_sequence"],
                             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"]),
-                        memory_antecedent=encdec_attention_values,
+                        memory=encdec_attention_values,
                         memory_bias=encdec_attention_bias)
                     # apply dropout, layer norm, residual
                     x = layer_postprocessing(

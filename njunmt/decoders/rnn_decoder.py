@@ -23,6 +23,7 @@ from collections import namedtuple
 import tensorflow as tf
 
 from njunmt.decoders.decoder import Decoder
+from njunmt.decoders.decoder import initialize_cache
 from njunmt.layers import common_attention
 from njunmt.layers.common_layers import fflayer
 from njunmt.utils.rnn_cell_utils import get_condr_rnn_cell
@@ -128,10 +129,9 @@ class CondAttentionDecoder(Decoder):
               decoder states.
             helper: An instance of `Feedback` that samples next
               symbols from logits.
-        Returns: A tuple `(init_decoder_states, decoding_params)`.
-          `decoding_params` is a tuple containing pre-projected
-          attention keys, attention values and attention length,
-          and will be passed to `step()` function.
+        Returns: A dict containing decoder RNN states, pre-projected attention
+          keys, attention values and attention length, and will be passed
+          to `step()` function.
         """
         attention_values = encoder_output.attention_values
         if hasattr(encoder_output, "attention_bias"):
@@ -146,9 +146,13 @@ class CondAttentionDecoder(Decoder):
                 dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
                 activation=None, name="ff_att_keys")
         init_rnn_states = bridge(self._r_rnn_cells.state_size)
-        decoding_params = (projected_attention_keys, attention_values, attention_bias)
+        init_cache = initialize_cache(
+            decoding_states=init_rnn_states,
+            attention_keys=projected_attention_keys,
+            memory=attention_values,
+            memory_bias=attention_bias)
 
-        return init_rnn_states, decoding_params
+        return init_cache
 
     def merge_top_features(self, decoder_output):
         """ Merges features of decoder top layers, as the input
@@ -183,38 +187,33 @@ class CondAttentionDecoder(Decoder):
         merged_output = tf.tanh(logit_lstm + logit_prev + logit_ctx)
         return merged_output
 
-    def step(self, decoder_input, decoder_states, decoding_params):
+    def step(self, decoder_input, cache):
         """ Decodes one step.
 
         Args:
             decoder_input: The decoder input for this timestep, an
               instance of `tf.Tensor`, [batch_size, dim_word].
-            decoder_states: The decoder RNN states at previous timestep.
-              Must have the same structure with `init_decoder_states`
-              returned from `prepare()` function.
-            decoding_params: The same as `decoding_params` returned
-              from `prepare()` function.
+            cache: A dict containing decoder RNN states at previous
+              timestep, pre-projected attention keys, attention values
+              and attention length.
 
-        Returns: A tuple `(cur_decoder_outputs, cur_decoder_states)`
-          at this timestep. The `cur_decoder_outputs` must be an
-          instance of `collections.namedtuple` whose element types
-          are defined by `output_dtype` property. The
-          `cur_decoder_states` must have the same structure with
-          `decoder_states`.
+        Returns: A tuple `(cur_decoder_outputs, cur_cache)` at this timestep.
+          The `cur_decoder_outputs` must be an instance of `collections.namedtuple`
+          whose element types are defined by `output_dtype` property. The
+          `cur_cache` must have the same structure with `cache`.
         """
-        projected_attention_keys, attention_values, attention_bias = decoding_params
         # layer0: get hidden1
-        cell_output0, cell_state0 = self._cond_rnn_cell(decoder_input, decoder_states[0])
+        cell_output0, cell_state0 = self._cond_rnn_cell(decoder_input, cache["decoding_states"][0])
 
         # compute attention using hidden1
         # [batch_size, n_timesteps_src]
         attention_scores, attention_context = self._attention.build(
-            query=cell_output0, query_is_projected=False,
-            keys=projected_attention_keys, key_is_projected=True,
-            memory=attention_values,
-            memory_bias=attention_bias)
+            query=cell_output0,
+            memory=cache["memory"],
+            memory_bias=cache["memory_bias"],
+            cache=cache)
         # hidden1's state is the hidden2 's initial state
-        following_decoder_state = tuple([cell_state0] + list(decoder_states[1:]))
+        following_decoder_state = tuple([cell_state0] + list(cache["decoding_states"][1:]))
         cell_output, cell_states = self._r_rnn_cells(
             attention_context, following_decoder_state)
 
@@ -224,7 +223,8 @@ class CondAttentionDecoder(Decoder):
             attention_context=attention_context,
             attention_scores=attention_scores)
 
-        return outputs, cell_states
+        cache["decoding_states"] = cell_states
+        return outputs, cache
 
 
 class AttentionDecoder(Decoder):
@@ -316,10 +316,9 @@ class AttentionDecoder(Decoder):
               decoder states.
             helper: An instance of `Feedback` that samples next
               symbols from logits.
-        Returns: A tuple `(init_decoder_states, decoding_params)`.
-          `decoding_params` is a tuple containing pre-projected
-          attention keys, attention values and attention length,
-          and will be passed to `step()` function.
+        Returns: A dict containing decoder RNN states, pre-projected attention
+          keys, attention values and attention length, and will be passed
+          to `step()` function.
         """
         attention_values = encoder_output.attention_values  # [batch_size, timesteps, dim_context]
         if hasattr(encoder_output, "attention_bias"):
@@ -334,10 +333,19 @@ class AttentionDecoder(Decoder):
                 dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
                 activation=None, name="ff_att_keys")
         init_rnn_states = bridge(self._rnn_cells.state_size)
-        init_att_context = tf.zeros_like(projected_attention_keys[:, 0, :], dtype=tf.float32)
-        decoding_params = (projected_attention_keys, attention_values, attention_bias)
+        if self._attention.attention_value_depth > 0:
+            init_att_context = tf.zeros([tf.shape(attention_values)[0],
+                                         self._attention.attention_value_depth], dtype=tf.float32)
+        else:
+            init_att_context = tf.zeros_like(attention_values[:, 0, :], dtype=tf.float32)
+        init_cache = initialize_cache(
+            decoding_states={"rnn_states": init_rnn_states,
+                             "attention_context": init_att_context},
+            attention_keys=projected_attention_keys,
+            memory=attention_values,
+            memory_bias=attention_bias)
 
-        return (init_rnn_states, init_att_context), decoding_params
+        return init_cache
 
     def merge_top_features(self, decoder_output):
         """ Merges features of decoder top layers, as the input
@@ -373,39 +381,33 @@ class AttentionDecoder(Decoder):
         merged_output = tf.tanh(logit_lstm + logit_ctx)
         return merged_output
 
-    def step(self, decoder_input, decoder_states, decoding_params):
+    def step(self, decoder_input, cache):
         """ Decodes one step.
 
         Args:
             decoder_input: The decoder input for this timestep, an
               instance of `tf.Tensor`, [batch_size, dim_word].
-            decoder_states: The decoder RNN states at previous timestep.
-              Must have the same structure with `init_decoder_states`
-              returned from `prepare()` function.
-            decoding_params: The same as `decoding_params` returned
-              from `prepare()` function.
+            cache: A dict containing decoder RNN states at previous
+              timestep, pre-projected attention keys, attention values
+              and attention length.
 
-        Returns: A tuple `(cur_decoder_outputs, cur_decoder_states)`
-          at this timestep. The `cur_decoder_outputs` must be an
-          instance of `collections.namedtuple` whose element types
-          are defined by `output_dtype` property. The
-          `cur_decoder_states` must have the same structure with
-          `decoder_states`.
+        Returns: A tuple `(cur_decoder_outputs, cur_cache)` at this timestep.
+          The `cur_decoder_outputs` must be an instance of `collections.namedtuple`
+          whose element types are defined by `output_dtype` property. The
+          `cur_cache` must have the same structure with `cache`.
         """
-        rnn_states, prev_attention_context = decoder_states
-        projected_attention_keys, attention_values, attention_bias = decoding_params
         # run RNN
         cell_output, cell_states = self._rnn_cells(
-            tf.concat([decoder_input, prev_attention_context], axis=1),
-            rnn_states)
+            tf.concat([decoder_input, cache["decoding_states"]["attention_context"]], axis=1),
+            cache["decoding_states"]["rnn_states"])
 
         # compute attention using hidden1
         # [batch_size, n_timesteps_src]
         attention_scores, attention_context = self._attention.build(
-            query=cell_output, query_is_projected=False,
-            keys=projected_attention_keys, key_is_projected=True,
-            memory=attention_values,
-            memory_bias=attention_bias)
+            query=cell_output,
+            memory=cache["memory"],
+            memory_bias=cache["memory_bias"],
+            cache=cache)
 
         outputs = self._DecoderOutputSpec(
             cur_decoder_hidden=cell_output,
@@ -413,7 +415,9 @@ class AttentionDecoder(Decoder):
             attention_context=attention_context,
             attention_scores=attention_scores)
 
-        return outputs, (cell_states, attention_context)
+        cache["decoding_states"]["rnn_states"] = cell_states
+        cache["decoding_states"]["attention_context"] = attention_context
+        return outputs, cache
 
 
 class SimpleDecoder(Decoder):
@@ -479,11 +483,13 @@ class SimpleDecoder(Decoder):
               decoder states.
             helper: An instance of `Feedback` that samples next
               symbols from logits.
-        Returns: A tuple `(init_decoder_states, decoding_params)`.
-          `decoding_params` is an empty list.
+        Returns: A dict containing decoder RNN states and will be
+          passed to `step()` function.
         """
         init_rnn_states = bridge(self.rnn_cells.state_size)
-        return init_rnn_states, []
+        init_cache = initialize_cache(
+            decoding_states=init_rnn_states)
+        return init_cache
 
     def merge_top_features(self, decoder_states):
         """ Merges features of decoder top layers, as the input
@@ -511,30 +517,25 @@ class SimpleDecoder(Decoder):
         merged_output = tf.tanh(logit_lstm + logit_prev)
         return merged_output
 
-    def step(self, decoder_input, decoder_states, decoding_params):
+    def step(self, decoder_input, cache):
         """ Decodes one step.
 
         Args:
             decoder_input: The decoder input for this timestep, an
               instance of `tf.Tensor`, [batch_size, dim_word].
-            decoder_states: The decoder RNN states at previous timestep.
-              Must have the same structure with `init_decoder_states`
-              returned from `prepare()` function.
-            decoding_params: The same as `decoding_params` returned
-              from `prepare()` function (an empty list)
+            cache: A dict containing decoder RNN states at previous
+              timestep.
 
-        Returns: A tuple `(cur_decoder_outputs, cur_decoder_states)`
-          at this timestep. The `cur_decoder_outputs` must be an
-          instance of `collections.namedtuple` whose element types
-          are defined by `output_dtype` property. The
-          `cur_decoder_states` must have the same structure with
-          `decoder_states`.
+        Returns: A tuple `(cur_decoder_outputs, cur_cache)` at this timestep.
+          The `cur_decoder_outputs` must be an instance of `collections.namedtuple`
+          whose element types are defined by `output_dtype` property. The
+          `cur_cache` must have the same structure with `cache`.
         """
-        _ = decoding_params
         # rnn layers
-        cell_output, cell_states = self.rnn_cells(decoder_input, decoder_states)
+        cell_output, cell_states = self.rnn_cells(decoder_input, cache["decoding_states"])
 
         outputs = self._decoder_output_tuple_type(
             cur_decoder_hidden=cell_output,
             prev_input=decoder_input)
-        return outputs, cell_states
+        cache["decoding_states"] = cell_states
+        return outputs, cache

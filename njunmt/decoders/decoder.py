@@ -72,32 +72,27 @@ class Decoder(Configurable):
               decoder states.
             helper: An instance of `Feedback` that samples next
               symbols from logits.
-        Returns: A tuple `(init_decoder_states, decoding_params)`.
-          `decoding_params` is a tuple containing attention values,
-          or empty tuple for decoders with no attention mechanism,
-          and will be passed to `step()` function.
+        Returns: A dict containing decoding states, pre-projected attention
+          keys, attention values and attention length, and will be passed
+          to `step()` function.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def step(self, decoder_input, decoder_states, decoding_params):
+    def step(self, decoder_input, cache):
         """ Decodes one step.
 
         Args:
             decoder_input: The decoder input for this timestep, an
-              instance of `tf.Tensor`.
-            decoder_states: The decoder states at previous timestep.
-              Must have the same structure with `init_decoder_states`
-              returned from `prepare()` function.
-            decoding_params: The same as `decoding_params` returned
-              from `prepare()` function.
+              instance of `tf.Tensor`, [batch_size, dim_word].
+            cache: A dict containing decoder RNN states at previous
+              timestep, pre-projected attention keys, attention values
+              and attention length.
 
-        Returns: A tuple `(cur_decoder_outputs, cur_decoder_states)`
-          at this timestep. The `cur_decoder_outputs` must be an
-          instance of `collections.namedtuple` whose element types
-          are defined by `output_dtype` property. The
-          `cur_decoder_states` must have the same structure with
-          `decoder_states`.
+        Returns: A tuple `(cur_decoder_outputs, cur_cache)` at this timestep.
+          The `cur_decoder_outputs` must be an instance of `collections.namedtuple`
+          whose element types are defined by `output_dtype` property. The
+          `cur_cache` must have the same structure with `cache`.
         """
         raise NotImplementedError
 
@@ -124,21 +119,6 @@ class Decoder(Configurable):
         device memory.
         """
         return None
-
-    def inputs_prepost_processing_fn(self):
-        """ This function is for generalization purpose. For `tf.while_loop`
-        in `dynamic_decode` function, do some preprocessing to the
-        inputs before it is passed to `step()` fn, and do some
-        postprocessing to the predictions before it is passed to
-        `tf.while_loop`.
-
-        For RNN decoders,  it is not recommended to overwrite this function.
-
-        Returns: A tuple `(preprocessing_fn, postprocessing_fn)`.
-        """
-        preprocessing_fn = lambda time, inputs: inputs
-        postprocessing_fn = lambda prev_inputs, predicted_inputs: predicted_inputs
-        return preprocessing_fn, postprocessing_fn
 
     def decode(self, encoder_output, bridge, helper,
                target_modality):
@@ -194,6 +174,31 @@ def _compute_logits(decoder, target_modality, decoder_output):
     with tf.variable_scope(target_modality.name):
         logits = target_modality.top(decoder_top_features)
     return logits
+
+
+def initialize_cache(
+        decoding_states,
+        attention_keys=None,
+        memory=None,
+        memory_bias=None):
+    """ Creates a cache dict for tf.while_loop.
+
+    Args:
+        decoding_states: A Tensor or a structure of Tensors for decoding while loop.
+        attention_keys: A Tensor. The attention keys for encoder-decoder attention.
+        memory: A Tensor. The attention values for encoder-decoder attention.
+        memory_bias: A Tensor. The attention bias for encoder-decoder attention.
+
+    Returns: A dict.
+    """
+    cache = {"decoding_states": decoding_states}
+    if attention_keys is not None:
+        cache["attention_keys"] = attention_keys
+    if memory is not None:
+        cache["memory"] = memory
+    if memory_bias is not None:
+        cache["memory_bias"] = memory_bias
+    return cache
 
 
 def _embed_words(target_modality, symbols, time):
@@ -262,34 +267,30 @@ def dynamic_decode(decoder,
     initial_inputs = _embed_words(target_modality, initial_input_symbols, initial_time)
 
     with tf.variable_scope(decoder.name):
-        inputs_preprocessing_fn, inputs_postprocessing_fn = decoder.inputs_prepost_processing_fn()
-        initial_inputs = inputs_postprocessing_fn(None, initial_inputs)
-        initial_decoder_states, decoding_params = decoder.prepare(encoder_output, bridge, helper)  # prepare decoder
+        initial_cache = decoder.prepare(encoder_output, bridge, helper)  # prepare decoder
         if decoder.mode == ModeKeys.INFER:
-            initial_decoder_states = stack_beam_size(initial_decoder_states, helper.beam_size)
-            decoding_params = stack_beam_size(decoding_params, helper.beam_size)
+            initial_cache = stack_beam_size(initial_cache, helper.beam_size)
 
     initial_outputs_ta = nest.map_structure(
         _create_ta, decoder_output_remover.apply(decoder.output_dtype))
 
-    def body_traininfer(time, inputs, decoder_states, outputs_ta,
+    def body_traininfer(time, inputs, cache, outputs_ta,
                         finished, *args):
         """Internal while_loop body.
 
         Args:
           time: scalar int32 Tensor.
           inputs: The inputs Tensor.
-          decoder_states: The decoder states.
+          cache: The decoder states.
           outputs_ta: structure of TensorArray.
           finished: A bool tensor (keeping track of what's finished).
           args: The log_probs, lengths, infer_status for mode==INFER.
         Returns:
-          `(time + 1, next_inputs, next_decoder_states, outputs_ta,
+          `(time + 1, next_inputs, next_cache, outputs_ta,
           next_finished, *args)`.
         """
         with tf.variable_scope(decoder.name):
-            inputs = inputs_preprocessing_fn(time, inputs)
-            outputs, next_decoder_states = decoder.step(inputs, decoder_states, decoding_params)
+            outputs, next_cache = decoder.step(inputs, cache)
         outputs_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
                                         outputs_ta, decoder_output_remover.apply(outputs))
         inner_loop_vars = [time + 1, None, None, outputs_ta, None]
@@ -303,7 +304,7 @@ def dynamic_decode(decoder,
             sample_ids, beam_ids, next_log_probs, next_lengths \
                 = helper.sample_symbols(logits, log_probs, finished, lengths, time=time)
 
-            next_decoder_states = gather_states(next_decoder_states, beam_ids)
+            next_cache["decoding_states"] = gather_states(next_cache["decoding_states"], beam_ids)
             prev_inputs = gather_states(inputs, beam_ids)
             infer_status = BeamSearchStateSpec(
                 log_probs=next_log_probs,
@@ -316,16 +317,14 @@ def dynamic_decode(decoder,
 
         next_finished, next_input_symbols = helper.next_symbols(time=time, sample_ids=sample_ids)
         next_inputs = _embed_words(target_modality, next_input_symbols, time + 1)
-        with tf.variable_scope(decoder.name):
-            next_inputs = inputs_postprocessing_fn(prev_inputs, next_inputs)
 
         next_finished = tf.logical_or(next_finished, finished)
         inner_loop_vars[1] = next_inputs
-        inner_loop_vars[2] = next_decoder_states
+        inner_loop_vars[2] = next_cache
         inner_loop_vars[4] = next_finished
         return inner_loop_vars
 
-    loop_vars = [initial_time, initial_inputs, initial_decoder_states,
+    loop_vars = [initial_time, initial_inputs, initial_cache,
                  initial_outputs_ta, initial_finished]
 
     if decoder.mode == ModeKeys.INFER:  # add inference-specific parameters
