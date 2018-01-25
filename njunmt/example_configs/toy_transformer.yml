@@ -1,5 +1,5 @@
 # transformer parameters for debugging
-model: njunmt.models.transformer.Transformer
+model: njunmt.models.SequenceToSequence
 model_params: 
   embedding.dim.source: 8
   embedding.dim.target: 8
@@ -13,8 +13,9 @@ model_params:
   inference.beam_size: 10
   inference.length_penalty: 0.0
   inference.maximum_labels_length: 20
+  initializer: uniform_unit_scaling
 
-  encoder.class: njunmt.encoders.transformer_encoder.TransformerEncoder
+  encoder.class: njunmt.encoders.TransformerEncoder
   encoder.params: &default_transformer_params
     num_layers: 2
     selfattention.params: 
@@ -29,7 +30,7 @@ model_params:
     layer_postprocess_sequence: "da"
     layer_prepostprocess_dropout_keep_prob: 0.9
     
-  decoder.class: njunmt.decoders.transformer_decoder.TransformerDecoder
+  decoder.class: njunmt.decoders.TransformerDecoder
   decoder.params:
     <<: *default_transformer_params
     attention.params: 

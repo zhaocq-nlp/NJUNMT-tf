@@ -23,7 +23,6 @@ from abc import ABCMeta, abstractmethod
 
 import numpy
 import six
-
 import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.training import saver as saver_lib
@@ -32,12 +31,12 @@ from njunmt.data.text_inputter import ParallelTextInputter
 from njunmt.data.text_inputter import TextLineInputter
 from njunmt.inference.decode import evaluate
 from njunmt.inference.decode import infer
-from njunmt.utils.model_builder import model_fn
+from njunmt.models.model_builder import model_fn
 from njunmt.utils.configurable import update_infer_params
-from njunmt.utils.global_names import ModeKeys
-from njunmt.utils.global_names import GlobalNames
-from njunmt.utils.metrics import multi_bleu_score
 from njunmt.utils.expert_utils import StepTimer
+from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.metrics import multi_bleu_score
 from njunmt.utils.misc import get_dict_from_collection
 from njunmt.utils.summary_writer import SummaryWriter
 

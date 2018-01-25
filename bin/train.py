@@ -29,6 +29,7 @@ tf.flags.DEFINE_string("config_paths", "",
                        the same name.""")
 
 tf.flags.DEFINE_string("model_dir", "", """model directory""")
+tf.flags.DEFINE_string("problem_name", None, """problem name""")
 tf.flags.DEFINE_string("train", "", """training options""")
 tf.flags.DEFINE_string("data", "", """training and evaluation data files, vocabulary files, bpe codes""")
 tf.flags.DEFINE_string("hooks", "", """training hooks""")

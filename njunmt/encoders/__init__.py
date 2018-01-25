@@ -1,2 +1,3 @@
-from . import rnn_encoder
-from . import transformer_encoder
+from njunmt.encoders.rnn_encoder import StackBidirectionalRNNEncoder
+from njunmt.encoders.rnn_encoder import UnidirectionalRNNEncoder
+from njunmt.encoders.transformer_encoder import TransformerEncoder

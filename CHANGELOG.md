@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - ``maximum_features_length`` and ``maximum_labels_length`` now indicate the length of encoded symbols (e.g. after BPE).
 - More flexible and concise code structure of decoders.
 - Attention classes.
+- Model builder (use ``SequenceToSequence``).
 
 ### Removed
 - ``input_prepose_processing_fn`` interface in decoders.

@@ -20,7 +20,8 @@ import tensorflow as tf
 from collections import namedtuple
 
 import njunmt
-from njunmt.models.ensemble_model import EnsembleModel
+from njunmt.models import SequenceToSequence
+from njunmt.models import EnsembleModel
 from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.global_names import GlobalNames
 from njunmt.training.optimize import optimize
@@ -130,11 +131,14 @@ def model_fn(
     Returns: A `EstimatorSpec` object.
     """
     # Create model template function
-    model_name = name or model_configs["model"].split(".")[-1]
+    model_str = model_configs["model"]
+    if model_str is None:
+        model_str = "SequenceToSequence"
+    model_name = name or model_str.split(".")[-1]
     if verbose:
         tf.logging.info("Create model: {} for {}".format(
-            model_configs["model"], mode))
-    model = eval(model_configs["model"])(
+            model_str, mode))
+    model = eval(model_str)(
         params=model_configs["model_params"],
         mode=mode,
         vocab_source=dataset.vocab_source,

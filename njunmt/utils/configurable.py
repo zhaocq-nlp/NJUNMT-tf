@@ -100,11 +100,12 @@ def _params_to_stringlist(params, prefix="   "):
 
 DEFAULT_TRAIN_CONFIGS = """
 model_dir: models
+problem_name:
 train: {}
 data: {}
 hooks: {}
 metrics: {}
-model: {}
+model:
 model_params: {}
 optimizer_params: {}
 """
@@ -130,6 +131,7 @@ def update_train_model_configs(model_configs, tf_flags):
             return mc
         return parse_params(params, model_configs)
 
+    model_configs = update(model_configs, "problem_name")
     model_configs = update(model_configs, "model_dir")
     model_configs = update(model_configs, "train")
     model_configs = update(model_configs, "data")

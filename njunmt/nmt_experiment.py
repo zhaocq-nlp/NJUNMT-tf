@@ -13,24 +13,25 @@
 # limitations under the License.
 """ Define base experiment class and basic experiment classes. """
 import time
+from abc import ABCMeta, abstractmethod
+
 import six
 import tensorflow as tf
-from abc import ABCMeta, abstractmethod
 
 from njunmt.data.dataset import Dataset
 from njunmt.data.text_inputter import ParallelTextInputter
 from njunmt.data.text_inputter import TextLineInputter
 from njunmt.data.vocab import Vocab
+from njunmt.inference.decode import evaluate
+from njunmt.inference.decode import infer
+from njunmt.models.model_builder import model_fn
 from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.configurable import parse_params
-from njunmt.utils.configurable import update_infer_params
-from njunmt.utils.configurable import update_eval_metric
 from njunmt.utils.configurable import print_params
-from njunmt.utils.misc import optimistic_restore
+from njunmt.utils.configurable import update_eval_metric
+from njunmt.utils.configurable import update_infer_params
 from njunmt.utils.metrics import multi_bleu_score
-from njunmt.utils.model_builder import model_fn
-from njunmt.inference.decode import infer
-from njunmt.inference.decode import evaluate
+from njunmt.utils.misc import optimistic_restore
 
 
 @six.add_metaclass(ABCMeta)
@@ -134,8 +135,10 @@ class TrainingExperiment(Experiment):
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
 
-        estimator_spec = model_fn(model_configs=self._model_configs, mode=tf.contrib.learn.ModeKeys.TRAIN,
-                                  dataset=dataset)
+        estimator_spec = model_fn(model_configs=self._model_configs,
+                                  mode=tf.contrib.learn.ModeKeys.TRAIN,
+                                  dataset=dataset,
+                                  name=self._model_configs["problem_name"])
         train_op = estimator_spec.train_op
         hooks = estimator_spec.training_hooks
         # build training session
@@ -240,8 +243,10 @@ class InferExperiment(Experiment):
             maximum_labels_length=self._model_configs["infer"]["maximum_labels_length"],
             length_penalty=self._model_configs["infer"]["length_penalty"])
         # build model
-        estimator_spec = model_fn(model_configs=self._model_configs, mode=tf.contrib.learn.ModeKeys.INFER,
-                                  dataset=dataset)
+        estimator_spec = model_fn(model_configs=self._model_configs,
+                                  mode=tf.contrib.learn.ModeKeys.INFER,
+                                  dataset=dataset,
+                                  name=self._model_configs["problem_name"])
         predict_op = estimator_spec.predictions
 
         sess = self._build_default_session()
@@ -358,7 +363,8 @@ class EvalExperiment(Experiment):
         # build model
         estimator_spec = model_fn(model_configs=self._model_configs,
                                   mode=tf.contrib.learn.ModeKeys.EVAL,
-                                  dataset=dataset)
+                                  dataset=dataset,
+                                  name=self._model_configs["problem_name"])
 
         sess = self._build_default_session()
 

@@ -285,8 +285,8 @@ class ParallelTextInputter(TextInputter):
                 line_count += 1
         if line_count > self._cache_size or self._batch_tokens_size is not None:
             return self._BigParallelData(
-                features_file, labels_file,
-                self, maximum_features_length, maximum_labels_length,
+                self, features_file, labels_file,
+                maximum_features_length, maximum_labels_length,
                 maximum_encoded_features_length, maximum_encoded_labels_length)
         return self._SmallParallelData(
             features_file, labels_file,

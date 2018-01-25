@@ -16,14 +16,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from njunmt.utils.configurable import ModeKeys
-from njunmt.models.base_seq2seq import BaseSeq2Seq
-from njunmt.utils.global_names import GlobalNames
-import tensorflow as tf
+import copy
+
+from njunmt.models.sequence_to_sequence import SequenceToSequence
 
 
-class AttentionSeq2Seq(BaseSeq2Seq):
-    """ Define a sequence-to-sequence model with attention"""
+class AttentionSeq2Seq(SequenceToSequence):
+    """ Define a sequence-to-sequence model with attention.
+    It is now reserved for old versions."""
+
     def __init__(self,
                  params,
                  mode,
@@ -46,76 +47,17 @@ class AttentionSeq2Seq(BaseSeq2Seq):
                                                vocab_source=vocab_source,
                                                vocab_target=vocab_target,
                                                name=name, verbose=verbose)
+        assert self.params["encoder.class"] == "njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder", (
+            "AttentionSeq2Seq must use StackBidirectionalRNNEncoder.")
+        assert self.params["decoder.class"] == "njunmt.decoders.rnn_decoder.CondAttentionDecoder", (
+            "AttentionSeq2Seq must use CondAttentionDecoder.")
 
     @staticmethod
     def default_params():
         """ Returns a dictionary of default parameters of this model. """
-        return {
-            "encoder.class": "njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder",
-            "encoder.params": {},  # Arbitrary parameters for the encoder
-            "bridge.class": "ZeroBridge",
-            "bridge.params": {},  # Arbitrary parameters for the bridge
-            "decoder.class": "njunmt.decoders.rnn_decoder.CondAttentionDecoder",
-            "decoder.params": {},  # Arbitrary parameters for the decoder
-            "embedding.dim.source": 512,
-            "embedding.dim.target": 512,
-            "modality.source.params": {},  # Arbitrary parameters for the modality
-            "modality.target.params": {},  # Arbitrary parameters for the modality
-            "modality.params": {},  # Arbitrary parameters for the modality
-            "source.reverse": False,
-            # "target.reverse": False,
-            "inference.beam_size": 12,
-            "inference.maximum_labels_length": 200,
-            "inference.length_penalty": 0.0}
+        attseq_default_params = copy.deepcopy(SequenceToSequence.default_params())
+        attseq_default_params["initializer"] = "random_uniform"
+        attseq_default_params["encoder.class"] = "njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder"
+        attseq_default_params["decoder.class"] = "njunmt.decoders.rnn_decoder.CondAttentionDecoder"
+        return attseq_default_params
 
-    def initializer(self):
-        """ Returns the default initializer of the model scope.
-
-        Returns: A `tf.initializer`.
-        """
-        dmodel = self.params["embedding.dim.target"]
-        return tf.random_uniform_initializer(
-            -dmodel ** -0.5, dmodel ** -0.5)
-
-    def _pack_output(self,
-                     encoder_output,
-                     decoder_output,
-                     infer_status,
-                     target_modality,
-                     **kwargs):
-        """ Packs model outputs.
-
-        Args:
-            encoder_output: An instance of `collections.namedtuple`
-              from `Encoder.encode()`.
-            decoder_output: An instance of `collections.namedtuple`
-              whose element types are defined by `Decoder.output_dtype`
-              property.
-            infer_status: An instance of `collections.namedtuple`
-              whose element types are defined by `BeamSearchStateSpec`,
-              indicating the status of beam search if mode==INFER, else,
-              a logits Tensor with shape [timesteps, batch_size, vocab_size].
-            target_modality: An instance of `Modality`.
-            **kwargs:
-
-        Returns: A dictionary containing inference status if mode==INFER,
-         else a list with the first element be `loss`.
-        """
-        base_output = super(AttentionSeq2Seq, self)._pack_output(
-            encoder_output, decoder_output, infer_status, target_modality, **kwargs)
-        att = None
-        if hasattr(decoder_output, "attention_scores"):
-            att = decoder_output.attention_scores
-            if self.params["source.reverse"]:
-                raise NotImplementedError
-                # att = tf.reverse_sequence(
-                #     input=decoder_output.attention_scores,  # [n_timesteps_trg, batch_size, n_timesteps_src]
-                #     seq_lengths=kwargs[GlobalNames.PH_FEATURE_IDS_NAME],
-                #     batch_axis=1, seq_axis=2)
-        if att is not None:
-            if self.mode == ModeKeys.INFER:
-                base_output["attention_scores"] = att
-            else:
-                base_output = list(base_output)
-                base_output += [att]
-        return base_output

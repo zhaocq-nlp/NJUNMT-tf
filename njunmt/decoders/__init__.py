@@ -1,2 +1,4 @@
-from . import rnn_decoder
-from . import transformer_decoder
+from njunmt.decoders.rnn_decoder import AttentionDecoder
+from njunmt.decoders.rnn_decoder import CondAttentionDecoder
+from njunmt.decoders.rnn_decoder import SimpleDecoder
+from njunmt.decoders.transformer_decoder import TransformerDecoder

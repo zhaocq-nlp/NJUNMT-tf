@@ -1,5 +1,5 @@
 # Network parameters for debugging
-model: njunmt.models.attention_seq2seq.AttentionSeq2Seq
+model: njunmt.models.SequenceToSequence
 model_params:
   embedding.dim.source: 8
   embedding.dim.target: 8
@@ -10,6 +10,7 @@ model_params:
     loss: crossentropy
     timing:
   source.reverse: false
+  initializer: random_uniform
   encoder.class: njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder
   encoder.params:
     rnn_cell:

@@ -41,14 +41,15 @@ for bri in BRIDGE_CLSS:
 
 
 @six.add_metaclass(ABCMeta)
-class BaseSeq2Seq(Configurable):
+class SequenceToSequence(Configurable):
     """ Base Sequence-to-Sequence Class """
+
     def __init__(self,
                  params,
                  mode,
                  vocab_source,
                  vocab_target,
-                 name="base_seq2seq",
+                 name="sequence_to_sequence",
                  verbose=True):
         """ Initializes model parameters.
 
@@ -61,7 +62,7 @@ class BaseSeq2Seq(Configurable):
             name: The name of this decoder.
             verbose: Print model parameters if set True.
         """
-        super(BaseSeq2Seq, self).__init__(
+        super(SequenceToSequence, self).__init__(
             params=params, mode=mode, verbose=False,
             name=name)
         self._vocab_source = vocab_source
@@ -109,20 +110,26 @@ class BaseSeq2Seq(Configurable):
             "modality.target.params": {},  # Arbitrary parameters for the modality
             "modality.params": {},  # Arbitrary parameters for the modality
             "source.reverse": False,
-            # "target.reverse": False,  # deprecated
             "inference.beam_size": 10,
-            "inference.maximum_labels_length": 200,
-            "inference.length_penalty": 0.0}
+            "inference.maximum_labels_length": 150,
+            "inference.length_penalty": -1.0,
+            "initializer": "random_uniform"}
 
-    @abstractmethod
-    def initializer(self):
+    def get_variable_initializer(self):
         """ Returns the default initializer of the model scope.
 
-        Returns: A `tf.random_uniform_initializer`.
+        Returns: A tf initializer.
         """
         dmodel = self.params["embedding.dim.target"]
-        return tf.random_uniform_initializer(
-            -dmodel ** -0.5, dmodel ** -0.5)
+        if self.params["initializer"] == "random_uniform":
+            return tf.random_uniform_initializer(
+                -dmodel ** -0.5, dmodel ** -0.5)
+        elif self.params["initializer"] == "normal_unit_scaling":
+            return tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode="FAN_AVG", uniform=False)
+        elif self.params["initializer"] == "uniform_unit_scaling":
+            return tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode="FAN_AVG", uniform=True)
+        else:
+            raise ValueError("Unrecognized initializer: {}".format(self.params["initializer"]))
 
     def build(self, input_fields):
         """ Builds the sequence-to-sequence model.
@@ -135,7 +142,7 @@ class BaseSeq2Seq(Configurable):
 
         Returns: Model output. See _pack_output() for more details.
         """
-        with tf.variable_scope(self._name, initializer=self.initializer()):
+        with tf.variable_scope(self._name, initializer=self.get_variable_initializer()):
             input_modality, target_modality = self._create_modalities()
             encoder = self._create_encoder()
             encoder_output = self._encode(
@@ -311,3 +318,83 @@ class BaseSeq2Seq(Configurable):
             predict_out["beam_ids"] = infer_status.beam_ids
             predict_out["log_probs"] = infer_status.log_probs
             return predict_out
+
+
+# def _pack_output(self,
+#                      encoder_output,
+#                      decoder_output,
+#                      infer_status,
+#                      target_modality,
+#                      **kwargs):
+#         """ Packs model outputs.
+#
+#         Args:
+#             encoder_output: An instance of `collections.namedtuple`
+#               from `Encoder.encode()`.
+#             decoder_output: An instance of `collections.namedtuple`
+#               whose element types are defined by `Decoder.output_dtype`
+#               property.
+#             infer_status: An instance of `collections.namedtuple`
+#               whose element types are defined by `BeamSearchStateSpec`,
+#               indicating the status of beam search if mode==INFER, else,
+#               a logits Tensor with shape [timesteps, batch_size, vocab_size].
+#             target_modality: An instance of `Modality`.
+#             **kwargs:
+#
+#         Returns: A dictionary containing inference status if mode==INFER,
+#          else a list with the first element be `loss`.
+#         """
+#         base_output = super(AttentionSeq2Seq, self)._pack_output(
+#             encoder_output, decoder_output, infer_status, target_modality, **kwargs)
+#         att = None
+#         if hasattr(decoder_output, "attention_scores"):
+#             att = decoder_output.attention_scores
+#             if self.params["source.reverse"]:
+#                 raise NotImplementedError
+#                 # att = tf.reverse_sequence(
+#                 #     input=decoder_output.attention_scores,  # [n_timesteps_trg, batch_size, n_timesteps_src]
+#                 #     seq_lengths=kwargs[GlobalNames.PH_FEATURE_IDS_NAME],
+#                 #     batch_axis=1, seq_axis=2)
+#         if att is not None:
+#             if self.mode == ModeKeys.INFER:
+#                 base_output["attention_scores"] = att
+#             else:
+#                 base_output = list(base_output)
+#                 base_output += [att]
+#         return base_output
+
+
+# def _pack_output(self,
+#                      encoder_output,
+#                      decoder_output,
+#                      infer_status,
+#                      target_modality,
+#                      **kwargs):
+#         """ Packs model outputs.
+#
+#         Args:
+#             encoder_output: An instance of `collections.namedtuple`
+#               from `Encoder.encode()`.
+#             decoder_output: An instance of `collections.namedtuple`
+#               whose element types are defined by `Decoder.output_dtype`
+#               property.
+#             infer_status: An instance of `collections.namedtuple`
+#               whose element types are defined by `BeamSearchStateSpec`,
+#               indicating the status of beam search if mode==INFER, else,
+#               a logits Tensor with shape [timesteps, batch_size, vocab_size].
+#             target_modality: An instance of `Modality`.
+#             **kwargs:
+#
+#         Returns: A dictionary containing inference status if mode==INFER,
+#          else a list with the first element be `loss`.
+#         """
+#         base_output = super(Transformer, self)._pack_output(
+#             encoder_output, decoder_output, infer_status, target_modality, **kwargs)
+#         if self.mode == ModeKeys.INFER:
+#             if hasattr(encoder_output, "encoder_self_attention"):
+#                 # A list of tensors, each tensor has shape [batch_size, num_heads, length_q, length_k]
+#                 att = getattr(encoder_output, "encoder_self_attention")
+#                 if self.params["source.reverse"]:
+#                     raise NotImplementedError
+#                 base_output["encoder_self_attention"] = att
+#         return base_output
