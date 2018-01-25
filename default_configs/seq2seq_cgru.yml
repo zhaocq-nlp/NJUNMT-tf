@@ -1,5 +1,5 @@
 # Network parameters for baseline
-model: njunmt.models.attention_seq2seq.AttentionSeq2Seq
+model: njunmt.models.SequenceToSequence
 model_params:
   embedding.dim.source: 512
   embedding.dim.target: 512
@@ -10,7 +10,8 @@ model_params:
     loss: crossentropy
     timing:
   source.reverse: false
-  encoder.class: njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder
+  initializer: random_uniform
+  encoder.class: njunmt.encoders.StackBidirectionalRNNEncoder
   encoder.params:
     rnn_cell:
       cell_class: GRUCell
@@ -23,7 +24,7 @@ model_params:
   bridge.class: ZeroBridge
   bridge.params:
 
-  decoder.class: njunmt.decoders.rnn_decoder.CondAttentionDecoder
+  decoder.class: njunmt.decoders.CondAttentionDecoder
   decoder.params:
     attention.class: BahdanauAttention
     attention.params:

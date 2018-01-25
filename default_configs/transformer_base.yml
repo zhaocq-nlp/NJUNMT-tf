@@ -34,6 +34,7 @@ model_params:
   inference.beam_size: 4
   inference.length_penalty: -1.0
   inference.maximum_labels_length: 150
+  initializer: uniform_unit_scaling
 
   encoder.class: njunmt.encoders.transformer_encoder.TransformerEncoder
   encoder.params: &default_transformer_params

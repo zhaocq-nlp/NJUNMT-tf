@@ -11,7 +11,7 @@ model_params:
     timing:
   source.reverse: false
   initializer: random_uniform
-  encoder.class: njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder
+  encoder.class: njunmt.encoders.StackBidirectionalRNNEncoder
   encoder.params:
     rnn_cell:
       cell_class: GRUCell
@@ -24,7 +24,7 @@ model_params:
   bridge.class: ZeroBridge
   bridge.params:
 
-  decoder.class: njunmt.decoders.rnn_decoder.CondAttentionDecoder
+  decoder.class: njunmt.decoders.CondAttentionDecoder
   decoder.params:
     attention.class: BahdanauAttention
     attention.params:
