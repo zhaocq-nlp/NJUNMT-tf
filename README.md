@@ -132,7 +132,6 @@ The available FLAGS (or the top levels of yaml configs) for bin.infer are as fol
 The following features remain unimplemented:
 
 - multi-gpu training
-- caching strategy for Transformer ("transformer big" setting fails on Geforce 1080TI due to Memory Allocation Error)
 - schedule sampling
 - minimum risk training
 
