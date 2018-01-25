@@ -27,9 +27,9 @@ python -m bin.infer \
     char_level: ${CHAR_LEVEL}" \
   --infer_data "
     - features_file: ${DATA_DIR}/toy.zh
-      output_file: ./mt02.trans
+      output_file: ./toy.trans
       output_attention: true
     - features_file: ${DATA_DIR}/toy.zh
-      labels_file: ${DATA_DIR}/mt02.ref
+      labels_file: ${DATA_DIR}/toy.en
       output_file: ./heheda
       output_attention: false"

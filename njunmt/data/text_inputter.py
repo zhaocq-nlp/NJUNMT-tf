@@ -238,26 +238,64 @@ class ParallelTextInputter(TextInputter):
               after BPE is applied) . If provided, the number of symbols of one sentence
               exceeding this value will be ignore.
 
-        Returns: An iterable instance.
+        Returns: An iterable instance or a list of iterable instances.
         """
         if self._features_file is None or self._labels_file is None:
             raise ValueError("Both _features_file and _labels_file should be provided.")
-        if not hasattr(self, "_parallel_data"):
-            line_count = 0
-            with gfile.GFile(self._features_file) as fp:
-                for _ in fp:
-                    line_count += 1
-            if line_count > self._cache_size or self._batch_tokens_size is not None:
-                setattr(self, "_parallel_data", self._BigParallelData(
-                    self, maximum_features_length, maximum_labels_length,
-                    maximum_encoded_features_length, maximum_encoded_labels_length))
-            else:
-                setattr(self, "_parallel_data", self._SmallParallelData(
-                    maximum_features_length, maximum_labels_length,
-                    maximum_encoded_features_length, maximum_encoded_labels_length))
-        return self._parallel_data
+        if isinstance(self._features_file, list):
+            return [self._make_feeding_data(f, l, maximum_features_length, maximum_labels_length,
+                                            maximum_encoded_features_length, maximum_encoded_labels_length)
+                    for f, l in zip(self._features_file, self._labels_file)]
+        return self._make_feeding_data(
+            self._features_file, self._labels_file,
+            maximum_features_length, maximum_labels_length,
+            maximum_encoded_features_length, maximum_encoded_labels_length)
+
+    def _make_feeding_data(self,
+                           features_file,
+                           labels_file,
+                           maximum_features_length=None,
+                           maximum_labels_length=None,
+                           maximum_encoded_features_length=None,
+                           maximum_encoded_labels_length=None):
+        """ Processes the data files and return an iterable
+              instance for loop.
+
+        Args:
+            features_file: The path of features file.
+            labels_file: The path of labels file.
+            maximum_features_length: The maximum sequence length of "features" field.
+              If provided, sentences exceeding this value will be ignore.
+            maximum_labels_length: The maximum sequence length of "labels" field.
+              If provided, sentences exceeding this value will be ignore.
+            maximum_encoded_features_length: The maximum length of feature symbols (especially
+              after BPE is applied) . If provided, the number of symbols of one sentence
+              exceeding this value will be ignore.
+            maximum_encoded_labels_length: The maximum length of label symbols (especially
+              after BPE is applied) . If provided, the number of symbols of one sentence
+              exceeding this value will be ignore.
+
+        Returns: An iterable instance.
+        """
+        if features_file is None or labels_file is None:
+            raise ValueError("Both features_file and labels_file should be provided.")
+        line_count = 0
+        with gfile.GFile(features_file) as fp:
+            for _ in fp:
+                line_count += 1
+        if line_count > self._cache_size or self._batch_tokens_size is not None:
+            return self._BigParallelData(
+                features_file, labels_file,
+                self, maximum_features_length, maximum_labels_length,
+                maximum_encoded_features_length, maximum_encoded_labels_length)
+        return self._SmallParallelData(
+            features_file, labels_file,
+            maximum_features_length, maximum_labels_length,
+            maximum_encoded_features_length, maximum_encoded_labels_length)
 
     def _SmallParallelData(self,
+                           features_file,
+                           labels_file,
                            maximum_features_length=None,
                            maximum_labels_length=None,
                            maximum_encoded_features_length=None,
@@ -265,6 +303,8 @@ class ParallelTextInputter(TextInputter):
         """ Function for reading small scale parallel data.
 
         Args:
+            features_file: The path of features file.
+            labels_file: The path of labels file.
             maximum_features_length: The maximum sequence length of "features" field.
               If provided, sentences exceeding this value will be ignore.
             maximum_labels_length: The maximum sequence length of "labels" field.
@@ -278,11 +318,11 @@ class ParallelTextInputter(TextInputter):
 
         Returns: A list of feeding data.
         """
-        eval_features = open_file(self._features_file, encoding="utf-8")
-        if gfile.Exists(self._labels_file):
-            eval_labels = open_file(self._labels_file, encoding="utf-8")
+        eval_features = open_file(features_file, encoding="utf-8")
+        if gfile.Exists(labels_file):
+            eval_labels = open_file(labels_file, encoding="utf-8")
         else:
-            eval_labels = open_file(self._labels_file + "0", encoding="utf-8")
+            eval_labels = open_file(labels_file + "0", encoding="utf-8")
         ss_buf = []
         tt_buf = []
         for ss, tt in zip(eval_features, eval_labels):
@@ -329,6 +369,8 @@ class ParallelTextInputter(TextInputter):
 
         def __init__(self,
                      parent,
+                     features_file,
+                     labels_file,
                      maximum_features_length=None,
                      maximum_labels_length=None,
                      maximum_encoded_features_length=None,
@@ -337,6 +379,8 @@ class ParallelTextInputter(TextInputter):
 
             Args:
                 parent: A `ParallelTextInputter` object.
+                features_file: The path of features file.
+                labels_file: The path of labels file.
                 maximum_features_length: The maximum sequence length of "features" field.
                   If provided, sentences exceeding this value will be ignore.
                 maximum_labels_length: The maximum sequence length of "labels" field.
@@ -349,8 +393,8 @@ class ParallelTextInputter(TextInputter):
                   exceeding this value will be ignore.
             """
             self._parent = parent
-            self._features_file = self._parent._features_file
-            self._labels_file = self._parent._labels_file
+            self._features_file = features_file
+            self._labels_file = labels_file
             if not gfile.Exists(self._labels_file):
                 self._labels_file = self._labels_file + "0"
             self._maximum_features_length = maximum_features_length

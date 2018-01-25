@@ -24,12 +24,13 @@ from njunmt.data.vocab import Vocab
 from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.configurable import parse_params
 from njunmt.utils.configurable import update_infer_params
+from njunmt.utils.configurable import update_eval_metric
 from njunmt.utils.configurable import print_params
 from njunmt.utils.misc import optimistic_restore
 from njunmt.utils.metrics import multi_bleu_score
 from njunmt.utils.model_builder import model_fn
 from njunmt.inference.decode import infer
-from njunmt.inference.decode import infer_sentences
+from njunmt.inference.decode import evaluate
 
 
 @six.add_metaclass(ABCMeta)
@@ -284,4 +285,110 @@ class InferExperiment(Experiment):
                     param["labels_file"], param["output_file"])
                 tf.logging.info("BLEU score ({}): {}"
                                 .format(param["features_file"], bleu_score))
+        tf.logging.info("Total Elapsed Time: %s" % str(time.time() - overall_start_time))
+
+
+class EvalExperiment(Experiment):
+    """ Define an experiment for evaluation using loss functions. """
+
+    def __init__(self, model_configs):
+        """ Initializes the evaluation experiment.
+
+        Args:
+            model_configs: A dictionary of all configurations.
+        """
+        super(EvalExperiment, self).__init__()
+        eval_options = parse_params(
+            params=model_configs["eval"],
+            default_params=self.default_evaluation_options())
+        eval_data = []
+        for item in model_configs["eval_data"]:
+            eval_data.append(parse_params(
+                params=item,
+                default_params=self.default_evaldata_params()))
+        self._model_configs = model_configs
+        self._model_configs["eval"] = eval_options
+        self._model_configs["eval_data"] = eval_data
+        print_params("Evaluation parameters: ", self._model_configs["eval"])
+        print_params("Evaluation datasets: ", self._model_configs["eval_data"])
+
+    @staticmethod
+    def default_evaluation_options():
+        """ Returns a dictionary of default inference options. """
+        return {
+            "metric": None,
+            "source_words_vocabulary": None,
+            "target_words_vocabulary": None,
+            "source_bpecodes": None,
+            "target_bpecodes": None,
+            "batch_size": 32}
+
+    @staticmethod
+    def default_evaldata_params():
+        """ Returns a dictionary of default infer data parameters. """
+        return {
+            "features_file": None,
+            "labels_file": None}
+
+    def run(self):
+        """Infers data files. """
+        # build datasets
+        self._vocab_source = Vocab(
+            filename=self._model_configs["eval"]["source_words_vocabulary"],
+            bpe_codes_file=self._model_configs["eval"]["source_bpecodes"],
+            reverse_seq=False)
+        self._vocab_target = Vocab(
+            filename=self._model_configs["eval"]["target_words_vocabulary"],
+            bpe_codes_file=self._model_configs["eval"]["target_bpecodes"],
+            reverse_seq=self._model_configs["train"]["reverse_target"])
+        # build dataset
+        dataset = Dataset(
+            self._vocab_source,
+            self._vocab_target,
+            eval_features_file=[p["features_file"] for p
+                                in self._model_configs["eval_data"]],
+            eval_labels_file=[p["labels_file"] for p
+                              in self._model_configs["eval_data"]])
+
+
+        # update evaluation model config
+        self._model_configs, metric_str = update_eval_metric(
+            self._model_configs, self._model_configs["eval"]["metric"])
+        tf.logging.info("Evaluating using {}".format(metric_str))
+        # build model
+        estimator_spec = model_fn(model_configs=self._model_configs,
+                                  mode=tf.contrib.learn.ModeKeys.EVAL,
+                                  dataset=dataset)
+
+        sess = self._build_default_session()
+
+        text_inputter = ParallelTextInputter(
+            dataset=dataset,
+            features_field_name="eval_features_file",
+            labels_field_name="eval_labels_file",
+            batch_size=self._model_configs["eval"]["batch_size"])
+        # reload
+        checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
+        if checkpoint_path:
+            tf.logging.info("reloading models...")
+            optimistic_restore(sess, checkpoint_path)
+        else:
+            raise OSError("File NOT Found. Fail to load checkpoint file from: {}"
+                          .format(self._model_configs["model_dir"]))
+
+        tf.logging.info("Start evaluation.")
+        overall_start_time = time.time()
+
+        for feeding_data, param in zip(text_inputter.make_feeding_data(),
+                                       self._model_configs["eval_data"]):
+            tf.logging.info("Evaluation Source File: {}.".format(param["features_file"]))
+            tf.logging.info("Evaluation Target File: {}.".format(param["labels_file"]))
+            start_time = time.time()
+            result = evaluate(sess=sess,
+                              eval_op=estimator_spec.loss,
+                              feeding_data=feeding_data)
+            tf.logging.info("FINISHED {}. Elapsed Time: {}."
+                            .format(param["features_file"], str(time.time() - start_time)))
+            tf.logging.info("Evaluation Score ({} on {}): {}"
+                            .format(metric_str, param["features_file"], result))
         tf.logging.info("Total Elapsed Time: %s" % str(time.time() - overall_start_time))

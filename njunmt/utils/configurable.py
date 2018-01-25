@@ -174,6 +174,39 @@ def update_infer_model_configs(model_configs, tf_flags):
     return model_configs
 
 
+DEFAULT_EVAL_CONFIGS = """
+model_dir: models
+eval: {}
+eval_data: []
+"""
+
+
+def update_eval_model_configs(model_configs, tf_flags):
+    """ Updates model configurations with tf FLAGS, for evaluation
+    setting.
+
+    Args:
+        model_configs: A dictionary of all model configurations.
+        tf_flags: tf FLAGS.
+
+    Returns: The updated dictionary.
+    """
+
+    def update(mc, param_name):
+        param_str = getattr(tf_flags, param_name)
+        if param_str is None:
+            return mc
+        params = yaml.load(param_str)
+        if params is None:
+            return mc
+        return deep_merge_dict(model_configs, {param_name: params})
+
+    model_configs = update(model_configs, "model_dir")
+    model_configs = update(model_configs, "eval")
+    model_configs = update(model_configs, "eval_data")
+    return model_configs
+
+
 def load_from_config_path(config_paths, default_model_configs=None):
     """ Loads configurations from files of yaml format.
 
@@ -314,14 +347,37 @@ def update_infer_params(
 
     Returns: An updated dict.
     """
-    ret = copy.deepcopy(model_configs)
     if beam_size is not None:
-        ret["model_params"]["inference.beam_size"] = beam_size
+        model_configs["model_params"]["inference.beam_size"] = beam_size
     if maximum_labels_length is not None:
-        ret["model_params"]["inference.maximum_labels_length"] = maximum_labels_length
+        model_configs["model_params"]["inference.maximum_labels_length"] = maximum_labels_length
     if length_penalty is not None:
-        ret["model_params"]["inference.length_penalty"] = length_penalty
-    return ret
+        model_configs["model_params"]["inference.length_penalty"] = length_penalty
+    return model_configs
+
+
+def update_eval_metric(
+        model_configs,
+        metric):
+    """ Resets evaluation-specific parameters.
+
+    Args:
+        model_configs: A dictionary of all model configurations.
+        metric: A string.
+
+    Returns: A tuple `(updated_dict, metric_str)`.
+    """
+    if "modality.target.params" in model_configs["model_params"]:
+        metric_str = model_configs["model_params"]["modality.target.params"]["loss"]
+    else:
+        metric_str = model_configs["model_params"]["modality.params"]["loss"]
+    if metric is not None:
+        metric_str = metric
+    if "modality.target.params" in model_configs["model_params"]:
+        model_configs["model_params"]["modality.target.params"]["loss"] = metric_str
+    else:
+        model_configs["model_params"]["modality.params"]["loss"] = metric_str
+    return model_configs, metric_str
 
 
 @six.add_metaclass(abc.ABCMeta)
