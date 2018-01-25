@@ -389,17 +389,7 @@ class MultiHeadAttention(BaseAttention):
                 query_is_2d = True
                 query = tf.expand_dims(query, axis=1)
             # compute q, k, v
-            if cache is not None and "attention_keys" in cache:
-                # here is for multi head attention in seq2seq model
-                q, k, v = self._compute_qkv(query, cache["attention_keys"], memory)
-            else:
-                q, k, v = self._compute_qkv(query, None, memory)
-            if cache is not None and "attention_keys" not in cache:
-                # here is for TransformerDecoder
-                k = tf.concat([cache["keys"], k], axis=1)
-                v = tf.concat([cache["values"], v], axis=1)
-                cache["keys"] = k
-                cache["values"] = v
+            q, k, v = self._compute_qkv(query, memory, cache)
 
             # after split_last_dimension: [batch_size, length, depth]
             #           ==> [batch_size, length, num_heads, depth/num_heads]
@@ -440,60 +430,91 @@ class MultiHeadAttention(BaseAttention):
                 attention_weight = tf.squeeze(attention_weight, axis=2)
             return attention_weight, attention_context
 
-    def _compute_qkv(self, query, keys, memory):
-        """ Computes linear transformations of query, key
-         and value.
+    def compute_qkv(self, memory):
+        """ Computes linear transformations of query, keys and values, especially
+        for self-attention in transformer encoder.
+
+        Args:
+            memory: Attention values tensor with shape
+              [batch_size, length_m, channels_value]
+
+        Returns: A tuple `(query_transformed, key_transformed, memory_transformed)`.
+        """
+        combined = conv1d(
+            memory,
+            self._attention_key_depth * 2 + self._attention_value_depth,
+            kernel_size=1, name="qkv_transform")
+        q, k, v = tf.split(
+            combined,
+            [self._attention_key_depth, self._attention_key_depth,
+             self._attention_value_depth],
+            axis=2)
+        return q, k, v
+
+    def _compute_qkv(self, query, memory, cache):
+        """ Computes linear transformations of query, keys and values.
 
         Args:
             query: Attention query tensor with shape [batch_size, length_q, channels_query].
               If None, it indicates self-attention.
-            keys: Attention keys tensor with shape [batch_size, length_k, channels_key].
             memory: Attention values tensor with shape
               [batch_size, length_m, channels_value]
+            cache: A dictionary containing pre-projected keys and values.
 
-        Returns: A tuple `(query_transformed, key_transformed,
-          memory_transformed)`.
+        Returns: A tuple `(query_transformed, key_transformed, memory_transformed)`.
         """
         if query is None:
-            # indicating self-attention, query and key are both the same as memory
-            _ = keys
-            combined = conv1d(
-                memory,
-                self._attention_key_depth * 2 + self._attention_value_depth,
-                kernel_size=1, name="qkv_transform")
-            q, k, v = tf.split(
-                combined,
-                [self._attention_key_depth, self._attention_key_depth,
-                 self._attention_value_depth],
-                axis=2)
-            return q, k, v
+            # indicates self-attention
+            q, k, v = self.compute_qkv(memory)
+            if cache is not None:
+                # for self-attention in transformer decoder when mode=INFER
+                k = tf.concat([cache["keys"], k], axis=1)
+                v = tf.concat([cache["values"], v], axis=1)
+                cache["keys"] = k
+                cache["values"] = v
         else:
-            # encoder-decoder attention or self-attention step-by-step
             q = conv1d(
                 query,
                 self._attention_key_depth,
                 kernel_size=1,
                 name="q_transform",
                 padding="VALID")
-            if keys is not None:
-                k = keys
-                v = conv1d(memory,
-                           self._attention_value_depth,
-                           kernel_size=1,
-                           name="v_transform",
-                           padding="VALID")
+            # indicates encoder-decoder attention
+            if cache is not None and "attention_keys" in cache:
+                k = cache["attention_keys"]
+                if "attention_values" in cache:
+                    v = cache["attention_values"]
+                else:
+                    v = conv1d(memory,
+                               self._attention_value_depth,
+                               kernel_size=1,
+                               name="v_transform",
+                               padding="VALID")
             else:
-                kv_combined = conv1d(
-                    memory,
-                    self._attention_key_depth + self._attention_value_depth,
-                    kernel_size=1,
-                    name="kv_transform",
-                    padding="VALID")
-                k, v = tf.split(
-                    kv_combined,
-                    [self._attention_key_depth, self._attention_value_depth],
-                    axis=2)
-            return q, k, v
+                k, v = self.compute_kv(memory)
+        return q, k, v
+
+    def compute_kv(self, memory):
+        """ Computes linear transformations of keys and values, especially
+        for encoder decoder attention.
+
+        Args:
+            memory: Attention values tensor with shape
+              [batch_size, length_m, channels_value]
+
+        Returns: A tuple `(key_transformed, memory_transformed)`.
+        """
+        kv_combined = conv1d(
+            memory,
+            self._attention_key_depth + self._attention_value_depth,
+            kernel_size=1,
+            name="kv_transform",
+            padding="VALID")
+        k, v = tf.split(
+            kv_combined,
+            [self._attention_key_depth, self._attention_value_depth],
+            axis=2)
+        return k, v
 
     def att_fn(self, q, k, bias):
         """ Computes attention scores according to attention_type.

@@ -195,8 +195,15 @@ class TransformerDecoder(Decoder):
                 # Ensure shape invariance for tf.while_loop.
                 keys._shape = tf.TensorShape([None, None, depth])
                 values._shape = tf.TensorShape([None, None, depth])
+                with tf.variable_scope("layer_%d" % l):
+                    with tf.variable_scope("encdec_attention"):
+                        with tf.variable_scope(self._encdec_attention_layers[l].name):
+                            preproj_keys, preproj_values = self._encdec_attention_layers[l] \
+                                .compute_kv(attention_values)
                 decoding_states["layer_{}".format(l)] = {
-                    "keys": keys, "values": values}
+                    "self_attention": {"keys": keys, "values": values},
+                    "encdec_attention": {"attention_keys": preproj_keys,
+                                         "attention_values": preproj_values}}
         else:
             decoding_states = None
 
@@ -251,6 +258,10 @@ class TransformerDecoder(Decoder):
             layer_name = "layer_{}".format(layer)
             layer_cache = None if cache["decoding_states"] is None \
                 else cache["decoding_states"][layer_name]
+            selfatt_cache = None if layer_cache is None \
+                else layer_cache["self_attention"]
+            encdecatt_cache = None if layer_cache is None \
+                else layer_cache["encdec_attention"]
             with tf.variable_scope("layer_%d" % layer):
                 with tf.variable_scope("self_attention"):
                     # self attention layer
@@ -260,7 +271,7 @@ class TransformerDecoder(Decoder):
                             x=x, process_sequence=self.params["layer_preprocess_sequence"],
                             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"]),
                         memory_bias=decoder_self_attention_bias,
-                        cache=layer_cache)
+                        cache=selfatt_cache)
                     # apply dropout, layer norm, residual
                     x = layer_postprocessing(
                         x=y, previous_x=x,
@@ -273,7 +284,8 @@ class TransformerDecoder(Decoder):
                             x=x, process_sequence=self.params["layer_preprocess_sequence"],
                             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"]),
                         memory=encdec_attention_values,
-                        memory_bias=encdec_attention_bias)
+                        memory_bias=encdec_attention_bias,
+                        cache=encdecatt_cache)
                     # apply dropout, layer norm, residual
                     x = layer_postprocessing(
                         x=y, previous_x=x,
