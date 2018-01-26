@@ -1,8 +1,7 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
+## [0.6.0] - 2018-01-26
 ### Added
 - Evaluation entrance (bin/eval.py).
 - Cache for decoders (especially for TransformerDecoder).
@@ -22,10 +21,6 @@ All notable changes to this project will be documented in this file.
 ### Removed
 - ``input_prepose_processing_fn`` interface in decoders.
 - Redundant computation in TransformerDecoder (cache).
-
-### Fixed
-...
-
 
 ## 0.5.0 - 2018-01-09
 ### Added
@@ -47,5 +42,5 @@ All notable changes to this project will be documented in this file.
 - Sequence-to-sequence model with attention.
 
 
-[Unreleased]: https://github.com/zhaocq-nlp/NJUNMT-tf/compare/v0.5...master
+[0.0.6]: https://github.com/zhaocq-nlp/NJUNMT-tf/compare/v0.5...v0.6
 
