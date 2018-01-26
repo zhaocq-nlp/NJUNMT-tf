@@ -69,7 +69,7 @@ class CondAttentionDecoder(Decoder):
 
         self._DecoderOutputSpec = namedtuple(
             "DecoderOutput",
-            "cur_decoder_hidden prev_input attention_context attention_scores")
+            "cur_decoder_hidden prev_input attention_context encoder_decoder_attention")
 
     @property
     def output_ignore_fields(self):
@@ -87,7 +87,7 @@ class CondAttentionDecoder(Decoder):
             cur_decoder_hidden=tf.float32,
             prev_input=tf.float32,
             attention_context=tf.float32,
-            attention_scores=tf.float32)
+            encoder_decoder_attention=tf.float32)
 
     def _check_parameters(self):
         assert self.params["attention.class"] in \
@@ -221,7 +221,7 @@ class CondAttentionDecoder(Decoder):
             cur_decoder_hidden=cell_output,
             prev_input=decoder_input,
             attention_context=attention_context,
-            attention_scores=attention_scores)
+            encoder_decoder_attention=attention_scores)
 
         cache["decoding_states"] = cell_states
         return outputs, cache
@@ -256,7 +256,7 @@ class AttentionDecoder(Decoder):
 
         self._DecoderOutputSpec = namedtuple(
             "DecoderOutput",
-            "cur_decoder_hidden prev_input attention_context attention_scores")
+            "cur_decoder_hidden prev_input attention_context encoder_decoder_attention")
 
     @property
     def output_ignore_fields(self):
@@ -274,7 +274,7 @@ class AttentionDecoder(Decoder):
             cur_decoder_hidden=tf.float32,
             prev_input=tf.float32,
             attention_context=tf.float32,
-            attention_scores=tf.float32)
+            encoder_decoder_attention=tf.float32)
 
     def _check_parameters(self):
         assert self.params["attention.class"] in \
@@ -413,7 +413,7 @@ class AttentionDecoder(Decoder):
             cur_decoder_hidden=cell_output,
             prev_input=decoder_input,
             attention_context=attention_context,
-            attention_scores=attention_scores)
+            encoder_decoder_attention=attention_scores)
 
         cache["decoding_states"]["rnn_states"] = cell_states
         cache["decoding_states"]["attention_context"] = attention_context

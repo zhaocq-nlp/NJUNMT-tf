@@ -50,9 +50,9 @@ class Transformer(SequenceToSequence):
                                           vocab_source=vocab_source,
                                           vocab_target=vocab_target,
                                           name=name, verbose=verbose)
-        assert self.params["encoder.class"] == "njunmt.encoders.transformer_encoder.TransformerEncoder", (
+        assert self.params["encoder.class"].endswith("TransformerEncoder"), (
             "Transformer must use TransformerEncoder.")
-        assert self.params["decoder.class"] == "njunmt.decoders.transformer_decoder.TransformerDecocder", (
+        assert self.params["decoder.class"].endswith("TransformerDecocder"), (
             "Transformer must use TransformerDecoder.")
 
     @staticmethod

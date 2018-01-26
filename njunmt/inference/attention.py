@@ -15,7 +15,7 @@
 import numpy
 
 
-def process_attention(predict_out, gather_idx):
+def process_attention_output(predict_out, gather_idx):
     """ Processes attention information.
 
     Args:
@@ -25,37 +25,32 @@ def process_attention(predict_out, gather_idx):
     Returns: Attention information.
     """
     beam_ids = predict_out["beam_ids"]
-    if "attention_scores" in predict_out:
-        # [n_timesteps_trg, batch_size * beam_size, n_timesteps_src] if ndims = 3
-        # [n_timesteps_trg, batch_size * beam_size, num_heads, n_timesteps_src] if ndims=4
-        attention_scores = predict_out["attention_scores"]
-        gathered_att = numpy.zeros_like(attention_scores)
-        num_shapes = len(gathered_att.shape)
-        for idx in range(beam_ids.shape[0]):
+    all_attentions = dict()
+    for k_att, v_att in predict_out["attentions"].items():
+        if "encoder_self_attention" in k_att:
+            all_attentions[k_att] = v_att
+        else:
+            # for encdec_attention or decoder self attention
+            # [n_timesteps_trg, batch_size * beam_size, n_timesteps_src] if ndims=3
+            # [n_timesteps_trg, batch_size * beam_size, num_heads, n_timesteps_src] if ndims=4
+            gathered_att = numpy.zeros_like(v_att)
+            num_shapes = len(gathered_att.shape)
+            for idx in range(beam_ids.shape[0]):
+                if num_shapes == 3:
+                    gathered_att = gathered_att[:, beam_ids[idx], :]
+                    gathered_att[idx, :, :] = v_att[idx]
+                elif num_shapes == 4:
+                    gathered_att = gathered_att[:, beam_ids[idx], :, :]
+                    gathered_att[idx, :, :, :] = v_att[idx]
+                else:
+                    raise ValueError
             if num_shapes == 3:
-                gathered_att = gathered_att[:, beam_ids[idx], :]
-                gathered_att[idx, :, :] = attention_scores[idx]
-            elif num_shapes == 4:
-                gathered_att = gathered_att[:, beam_ids[idx], :, :]
-                gathered_att[idx, :, :, :] = attention_scores[idx]
-            else:
-                raise ValueError
-        if num_shapes == 3:
-            # [n_timesteps_trg, batch_size, n_timesteps_src]
-            return {"encoder_decoder_attention": gathered_att[:, gather_idx, :]}
-        else:  # [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
-            # transpose to [batch_size, num_heads, n_timesteps_trg, n_timesteps_src]
-            return {"encoder_decoder_attention":
-                        gathered_att[:, gather_idx, :, :].transpose([1, 2, 0, 3])}
-    if "encoder_self_attention" in predict_out:
-        # [batch_size, num_heads, length_q, length_k]
-        encoder_self_attention = predict_out["encoder_self_attention"]
-        # a list
-        ret = {}
-        for idx, att in enumerate(encoder_self_attention):
-            ret["encoder_self_attention" + str(idx)] = att
-        return ret
-    return None
+                # [n_timesteps_trg, batch_size, n_timesteps_src]
+                all_attentions[k_att] = gathered_att[:, gather_idx, :]
+            else:  # [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
+                # transpose to [batch_size, num_heads, n_timesteps_trg, n_timesteps_src]
+                all_attentions[k_att] = gathered_att[:, gather_idx, :, :].transpose([1, 2, 0, 3])
+    return all_attentions
 
 
 def pack_batch_attention_dict(
@@ -84,6 +79,9 @@ def pack_batch_attention_dict(
                 len_trg = len(source_tokens[idx]) + 1
             elif "encoder_decoder_attention" in key:
                 len_src = len(source_tokens[idx]) + 1
+                len_trg = len(candidate_tokens[idx]) + 1
+            elif "decoder_self_attention" in key:
+                len_src = len(candidate_tokens[idx]) + 1
                 len_trg = len(candidate_tokens[idx]) + 1
             else:
                 raise NotImplementedError

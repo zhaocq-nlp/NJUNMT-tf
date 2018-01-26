@@ -295,7 +295,6 @@ def dynamic_decode(decoder,
                                         outputs_ta, decoder_output_remover.apply(outputs))
         inner_loop_vars = [time + 1, None, None, outputs_ta, None]
         sample_ids = None
-        prev_inputs = inputs
         if decoder.mode == ModeKeys.INFER:
             log_probs, lengths = args[0], args[1]
             infer_status_ta = args[2]
@@ -305,7 +304,6 @@ def dynamic_decode(decoder,
                 = helper.sample_symbols(logits, log_probs, finished, lengths, time=time)
 
             next_cache["decoding_states"] = gather_states(next_cache["decoding_states"], beam_ids)
-            prev_inputs = gather_states(inputs, beam_ids)
             infer_status = BeamSearchStateSpec(
                 log_probs=next_log_probs,
                 predicted_ids=sample_ids,

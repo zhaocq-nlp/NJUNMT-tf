@@ -17,6 +17,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow.python.util import nest
 from collections import namedtuple
 
 from njunmt.utils.global_names import ModeKeys
@@ -58,9 +59,15 @@ class TransformerDecoder(Decoder):
                 MultiHeadAttention(self.params["selfattention.params"], self.mode))
             self._encdec_attention_layers.append(
                 MultiHeadAttention(self.params["attention.params"], self.mode))
-
-        self._DecoderOutputSpec = namedtuple(
-            "TransformerOutput", "decoder_hidden")
+        if self.mode == ModeKeys.TRAIN:
+            self._DecoderOutputSpec = namedtuple(
+                "TransformerOutput", "decoder_hidden")
+        elif self.mode == ModeKeys.EVAL:
+            self._DecoderOutputSpec = namedtuple(
+                "TransformerOutput", "decoder_hidden decoder_self_attention encoder_decoder_attention")
+        else:
+            self._DecoderOutputSpec = namedtuple(
+                "TransformerOutput", "decoder_hidden encoder_decoder_attention")
 
     @staticmethod
     def default_params():
@@ -81,8 +88,18 @@ class TransformerDecoder(Decoder):
     def output_dtype(self):
         """ Returns a `collections.namedtuple`,
         the definition of decoder output types. """
-        return self._DecoderOutputSpec(
-            decoder_hidden=tf.float32)
+        if self.mode == ModeKeys.TRAIN:
+            return self._DecoderOutputSpec(
+                decoder_hidden=tf.float32)
+        elif self.mode == ModeKeys.EVAL:
+            return self._DecoderOutputSpec(
+                decoder_hidden=tf.float32,
+                decoder_self_attention=[tf.float32] * self.params["num_layers"],
+                encoder_decoder_attention=[tf.float32] * self.params["num_layers"])
+        else:
+            return self._DecoderOutputSpec(
+                decoder_hidden=tf.float32,
+                encoder_decoder_attention=[tf.float32] * self.params["num_layers"])
 
     def merge_top_features(self, decoder_output):
         """ Merges features of decoder top layers, as the input
@@ -143,17 +160,28 @@ class TransformerDecoder(Decoder):
                 decoder_inputs = target_modality.targets_bottom(label_ids)
             with tf.variable_scope(self.name):
                 cache = self.prepare(encoder_output, None, helper)
-                outputs = self._transform(decoder_inputs, cache)  # [batch_size, time, dim]
-                final_outputs = self._DecoderOutputSpec(
-                    decoder_hidden=outputs)
+                outputs, decoder_self_attention, encdec_attention \
+                    = self._transform(decoder_inputs, cache)  # [batch_size, time, dim]
+                if self.mode == ModeKeys.TRAIN:
+                    final_outputs = self._DecoderOutputSpec(
+                        decoder_hidden=outputs)
+                else:
+                    final_outputs = self._DecoderOutputSpec(
+                        decoder_hidden=outputs,
+                        decoder_self_attention=nest.map_structure(
+                            lambda x: tf.transpose(x, [2, 0, 1, 3]), decoder_self_attention),
+                        encoder_decoder_attention=nest.map_structure(
+                            lambda x: tf.transpose(x, [2, 0, 1, 3]), encdec_attention))
                 decoder_top_features = self.merge_top_features(final_outputs)
             # do transpose to fit loss function, [time, batch_size, dim]
             decoder_top_features = tf.transpose(decoder_top_features, [1, 0, 2])
             with tf.variable_scope(target_modality.name):
                 logits = target_modality.top(decoder_top_features)  # [time, batch_size, vocab_size]
             return final_outputs, logits
-        outputs, infer_status = dynamic_decode(decoder=self, encoder_output=encoder_output, bridge=None, helper=helper,
-                                               target_modality=target_modality)
+        outputs, infer_status = dynamic_decode(
+            decoder=self, encoder_output=encoder_output,
+            bridge=None, helper=helper,
+            target_modality=target_modality)
         return outputs, infer_status
 
     def prepare(self, encoder_output, bridge, helper):
@@ -228,8 +256,13 @@ class TransformerDecoder(Decoder):
           `cur_cache` must have the same structure with `cache`.
 
         """
-        outputs = self._transform(tf.expand_dims(decoder_input, axis=1), cache)
-        final_outputs = self._DecoderOutputSpec(decoder_hidden=outputs[:, -1, :])
+        # decoder self attention: [batch_size, num_heads, length_q, length_k]
+        outputs, decoder_self_attention, encdec_attention = \
+            self._transform(tf.expand_dims(decoder_input, axis=1), cache)
+        final_outputs = self._DecoderOutputSpec(
+            decoder_hidden=outputs[:, -1, :],
+            # decoder_self_attention=[tf.squeeze(att, axis=2) for att in decoder_self_attention],
+            encoder_decoder_attention=[tf.squeeze(att, axis=2) for att in encdec_attention])
         # loop on decoder_state, actually it is not used
         return final_outputs, cache
 
@@ -249,6 +282,9 @@ class TransformerDecoder(Decoder):
         encdec_attention_values = cache["memory"]
         # [batch_size, 1, 1, max_len_src]
         encdec_attention_bias = cache["memory_bias"]
+
+        decoder_self_attention_scores = []
+        encdec_attention_scores = []
 
         # decoder_self_attention_bias: [1, 1, max_len_trg, max_len_trg]
         decoder_self_attention_bias = attention_bias_lower_triangle(
@@ -272,6 +308,8 @@ class TransformerDecoder(Decoder):
                             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"]),
                         memory_bias=decoder_self_attention_bias,
                         cache=selfatt_cache)
+                    # [batch_size, num_heads, length_q, length_k]
+                    decoder_self_attention_scores.append(w_y)
                     # apply dropout, layer norm, residual
                     x = layer_postprocessing(
                         x=y, previous_x=x,
@@ -286,6 +324,8 @@ class TransformerDecoder(Decoder):
                         memory=encdec_attention_values,
                         memory_bias=encdec_attention_bias,
                         cache=encdecatt_cache)
+                    # [batch_size, num_heads, length_q, length_k]
+                    encdec_attention_scores.append(w_y)
                     # apply dropout, layer norm, residual
                     x = layer_postprocessing(
                         x=y, previous_x=x,
@@ -308,4 +348,4 @@ class TransformerDecoder(Decoder):
         x = layer_preprocess(
             x=x, process_sequence=self.params["layer_preprocess_sequence"],
             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"])
-        return x
+        return x, decoder_self_attention_scores, encdec_attention_scores

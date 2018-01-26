@@ -25,7 +25,7 @@ import re
 import tensorflow as tf
 from tensorflow import gfile
 
-from njunmt.inference.attention import process_attention
+from njunmt.inference.attention import process_attention_output
 from njunmt.inference.attention import pack_batch_attention_dict
 from njunmt.utils.global_names import GlobalNames
 from njunmt.utils.misc import padding_batch_data
@@ -120,7 +120,8 @@ def _infer(
         prediction_op,
         batch_size,
         alpha=None,
-        top_k=1):
+        top_k=1,
+        output_attention=False):
     """ Infers a batch of samples with beam search.
 
     Args:
@@ -133,6 +134,7 @@ def _infer(
           sequence.
         top_k: An integer, number of predicted sequences will be
           returned.
+        output_attention: Whether to output attention.
 
     Returns: A tuple `(predicted_sequences, attention_scores)`.
       The `predicted_sequences` is an ndarray of shape
@@ -140,8 +142,14 @@ def _infer(
       The `attention_scores` is None if there is no attention
       related information in `prediction_op`.
     """
-    predict_out = sess.run(prediction_op,
-                           feed_dict=feed_dict)
+    if output_attention:
+        predict_out = sess.run(prediction_op,
+                               feed_dict=feed_dict)
+    else:
+        att_op = prediction_op.pop("attentions")
+        predict_out = sess.run(prediction_op,
+                               feed_dict=feed_dict)
+        prediction_op["attentions"] = att_op
     predicted_ids = predict_out["predicted_ids"]  # [n_timesteps_trg, batch_size * beam_size]
     beam_ids = predict_out["beam_ids"]  # [n_timesteps_trg, batch_size * beam_size]
     sequence_lengths = predict_out["sequence_lengths"]  # [n_timesteps_trg, batch_size * beam_size]
@@ -166,9 +174,10 @@ def _infer(
     argidx = numpy.argsort(scores, axis=1)[:, ::-1]  # descending order: [batch_size, beam_size]
     argidx += numpy.tile(numpy.arange(batch_size) * beam_size, [beam_size, 1]).transpose()
     argidx = numpy.reshape(argidx[:, :top_k], -1)
-
-    attentions = process_attention(predict_out, argidx)
-    return gathered_pred_ids[argidx, :], attentions
+    if output_attention:
+        attentions = process_attention_output(predict_out, argidx)
+        return gathered_pred_ids[argidx, :], attentions
+    return gathered_pred_ids[argidx, :], None
 
 
 def infer_sentences(
@@ -252,7 +261,8 @@ def infer(
         cnt = 0
         for x_str, x_len, feeding_batch in feeding_data:
             prediction, att = _infer(sess, feeding_batch, prediction_op,
-                                     len(x_str), alpha=alpha, top_k=1)
+                                     len(x_str), alpha=alpha, top_k=1,
+                                     output_attention=output_attention)
             y_str = [delimiter.join(vocab_target.convert_to_wordlist(prediction[sample_idx]))
                      for sample_idx in range(prediction.shape[0])]
             fw.write('\n'.join(y_str) + "\n")

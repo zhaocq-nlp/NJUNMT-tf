@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 - Evaluation entrance (bin/eval.py).
 - Cache for decoders (especially for TransformerDecoder).
 - Change Log.
+- Attention output of Transformer.
 
 
 ### Changed
@@ -15,8 +16,8 @@ All notable changes to this project will be documented in this file.
 - BPE in ``Vocab`` accepts an extra vocab file (also see --vocabulary in njunmt/tools/apply_bpe.py).
 - ``maximum_features_length`` and ``maximum_labels_length`` now indicate the length of encoded symbols (e.g. after BPE).
 - More flexible and concise code structure of decoders.
-- Attention classes.
-- Model builder (use ``SequenceToSequence``).
+- Attention interfaces.
+- ``BaseSeq2Seq`` -> ``SequenceToSequence``.
 
 ### Removed
 - ``input_prepose_processing_fn`` interface in decoders.

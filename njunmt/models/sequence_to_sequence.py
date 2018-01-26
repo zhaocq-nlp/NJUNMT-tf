@@ -310,91 +310,34 @@ class SequenceToSequence(Configurable):
                 label_ids=kwargs[GlobalNames.PH_LABEL_IDS_NAME],
                 label_length=kwargs[GlobalNames.PH_LABEL_LENGTH_NAME],
                 target_modality=target_modality)
-            return [loss]
-        else:  # INFER
-            predict_out = dict()
-            predict_out["predicted_ids"] = infer_status.predicted_ids
-            predict_out["sequence_lengths"] = infer_status.lengths
-            predict_out["beam_ids"] = infer_status.beam_ids
-            predict_out["log_probs"] = infer_status.log_probs
-            return predict_out
+        if self.mode == ModeKeys.TRAIN:
+            return loss
 
+        attentions = dict()
 
-# def _pack_output(self,
-#                      encoder_output,
-#                      decoder_output,
-#                      infer_status,
-#                      target_modality,
-#                      **kwargs):
-#         """ Packs model outputs.
-#
-#         Args:
-#             encoder_output: An instance of `collections.namedtuple`
-#               from `Encoder.encode()`.
-#             decoder_output: An instance of `collections.namedtuple`
-#               whose element types are defined by `Decoder.output_dtype`
-#               property.
-#             infer_status: An instance of `collections.namedtuple`
-#               whose element types are defined by `BeamSearchStateSpec`,
-#               indicating the status of beam search if mode==INFER, else,
-#               a logits Tensor with shape [timesteps, batch_size, vocab_size].
-#             target_modality: An instance of `Modality`.
-#             **kwargs:
-#
-#         Returns: A dictionary containing inference status if mode==INFER,
-#          else a list with the first element be `loss`.
-#         """
-#         base_output = super(AttentionSeq2Seq, self)._pack_output(
-#             encoder_output, decoder_output, infer_status, target_modality, **kwargs)
-#         att = None
-#         if hasattr(decoder_output, "attention_scores"):
-#             att = decoder_output.attention_scores
-#             if self.params["source.reverse"]:
-#                 raise NotImplementedError
-#                 # att = tf.reverse_sequence(
-#                 #     input=decoder_output.attention_scores,  # [n_timesteps_trg, batch_size, n_timesteps_src]
-#                 #     seq_lengths=kwargs[GlobalNames.PH_FEATURE_IDS_NAME],
-#                 #     batch_axis=1, seq_axis=2)
-#         if att is not None:
-#             if self.mode == ModeKeys.INFER:
-#                 base_output["attention_scores"] = att
-#             else:
-#                 base_output = list(base_output)
-#                 base_output += [att]
-#         return base_output
+        def get_attention(name, atts):
+            if isinstance(atts, list):
+                for idx, a in enumerate(atts): # for multi-layer
+                    attentions[name + str(idx)] = a
+            else:
+                attentions[name] = atts
 
+        if hasattr(encoder_output, "encoder_self_attention"):
+            # now it can be only MultiHeadAttention with shape [batch_size, num_heads, length_q, length_k]
+            get_attention("encoder_self_attention", getattr(encoder_output, "encoder_self_attention"))
+        if hasattr(decoder_output, "encoder_decoder_attention"):
+            get_attention("encoder_decoder_attention", getattr(decoder_output, "encoder_decoder_attention"))
+        if hasattr(decoder_output, "decoder_self_attention"):
+            get_attention("decoder_self_attention", getattr(decoder_output, "decoder_self_attention"))
 
-# def _pack_output(self,
-#                      encoder_output,
-#                      decoder_output,
-#                      infer_status,
-#                      target_modality,
-#                      **kwargs):
-#         """ Packs model outputs.
-#
-#         Args:
-#             encoder_output: An instance of `collections.namedtuple`
-#               from `Encoder.encode()`.
-#             decoder_output: An instance of `collections.namedtuple`
-#               whose element types are defined by `Decoder.output_dtype`
-#               property.
-#             infer_status: An instance of `collections.namedtuple`
-#               whose element types are defined by `BeamSearchStateSpec`,
-#               indicating the status of beam search if mode==INFER, else,
-#               a logits Tensor with shape [timesteps, batch_size, vocab_size].
-#             target_modality: An instance of `Modality`.
-#             **kwargs:
-#
-#         Returns: A dictionary containing inference status if mode==INFER,
-#          else a list with the first element be `loss`.
-#         """
-#         base_output = super(Transformer, self)._pack_output(
-#             encoder_output, decoder_output, infer_status, target_modality, **kwargs)
-#         if self.mode == ModeKeys.INFER:
-#             if hasattr(encoder_output, "encoder_self_attention"):
-#                 # A list of tensors, each tensor has shape [batch_size, num_heads, length_q, length_k]
-#                 att = getattr(encoder_output, "encoder_self_attention")
-#                 if self.params["source.reverse"]:
-#                     raise NotImplementedError
-#                 base_output["encoder_self_attention"] = att
-#         return base_output
+        if self.mode == ModeKeys.EVAL:
+            return loss, attentions
+
+        assert self.mode == ModeKeys.INFER
+        predict_out = dict()
+        predict_out["predicted_ids"] = infer_status.predicted_ids
+        predict_out["sequence_lengths"] = infer_status.lengths
+        predict_out["beam_ids"] = infer_status.beam_ids
+        predict_out["log_probs"] = infer_status.log_probs
+        predict_out["attentions"] = attentions
+        return predict_out

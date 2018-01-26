@@ -47,9 +47,9 @@ class AttentionSeq2Seq(SequenceToSequence):
                                                vocab_source=vocab_source,
                                                vocab_target=vocab_target,
                                                name=name, verbose=verbose)
-        assert self.params["encoder.class"] == "njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder", (
+        assert self.params["encoder.class"].endswith("StackBidirectionalRNNEncoder"), (
             "AttentionSeq2Seq must use StackBidirectionalRNNEncoder.")
-        assert self.params["decoder.class"] == "njunmt.decoders.rnn_decoder.CondAttentionDecoder", (
+        assert self.params["decoder.class"].endswith("CondAttentionDecoder"), (
             "AttentionSeq2Seq must use CondAttentionDecoder.")
 
     @staticmethod
