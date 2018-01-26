@@ -42,5 +42,5 @@ All notable changes to this project will be documented in this file.
 - Sequence-to-sequence model with attention.
 
 
-[0.0.6]: https://github.com/zhaocq-nlp/NJUNMT-tf/compare/v0.5...v0.6
+[0.6.0]: https://github.com/zhaocq-nlp/NJUNMT-tf/compare/v0.5...v0.6
 
