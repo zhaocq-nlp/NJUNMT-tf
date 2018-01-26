@@ -219,10 +219,9 @@ class LossMetricSpec(TextMetricSpec):
             run_context: A `SessionRunContext` object.
             global_step: A python integer, the current training step.
         """
-        loss = evaluate(
-            sess=run_context.session,
-            eval_op=self._loss_op,
-            feeding_data=self._eval_feeding_data)
+        loss = evaluate(sess=run_context.session,
+                        eval_op=self._loss_op,
+                        feeding_data=self._eval_feeding_data)
         tf.logging.info("Evaluating DEVSET: DevLoss=%f  GlobalStep=%d" % (loss, global_step))
         if self._summary_writer is not None:
             self._summary_writer.add_summary("Metrics/DevLoss", loss, global_step)

@@ -22,7 +22,7 @@ from njunmt.data.dataset import Dataset
 from njunmt.data.text_inputter import ParallelTextInputter
 from njunmt.data.text_inputter import TextLineInputter
 from njunmt.data.vocab import Vocab
-from njunmt.inference.decode import evaluate
+from njunmt.inference.decode import evaluate_with_attention
 from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn
 from njunmt.utils.configurable import ModelConfigs
@@ -269,7 +269,7 @@ class InferExperiment(Experiment):
 
         for feeding_data, param in zip(text_inputter.make_feeding_data(),
                                        self._model_configs["infer_data"]):
-            tf.logging.info("Infer Source Features File: {}.".format(param["features_file"]))
+            tf.logging.info("Infer Source File: {}.".format(param["features_file"]))
             start_time = time.time()
             infer(sess=sess,
                   prediction_op=predict_op,
@@ -333,7 +333,8 @@ class EvalExperiment(Experiment):
         """ Returns a dictionary of default infer data parameters. """
         return {
             "features_file": None,
-            "labels_file": None}
+            "labels_file": None,
+            "output_attention": False}
 
     def run(self):
         """Infers data files. """
@@ -355,7 +356,6 @@ class EvalExperiment(Experiment):
             eval_labels_file=[p["labels_file"] for p
                               in self._model_configs["eval_data"]])
 
-
         # update evaluation model config
         self._model_configs, metric_str = update_eval_metric(
             self._model_configs, self._model_configs["eval"]["metric"])
@@ -367,12 +367,14 @@ class EvalExperiment(Experiment):
                                   name=self._model_configs["problem_name"])
 
         sess = self._build_default_session()
-
+        do_bucketing = (sum([p["output_attention"]
+                             for p in self._model_configs["eval_data"]]) == 0)
         text_inputter = ParallelTextInputter(
             dataset=dataset,
             features_field_name="eval_features_file",
             labels_field_name="eval_labels_file",
-            batch_size=self._model_configs["eval"]["batch_size"])
+            batch_size=self._model_configs["eval"]["batch_size"],
+            bucketing=do_bucketing)
         # reload
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
         if checkpoint_path:
@@ -385,14 +387,18 @@ class EvalExperiment(Experiment):
         tf.logging.info("Start evaluation.")
         overall_start_time = time.time()
 
-        for feeding_data, param in zip(text_inputter.make_feeding_data(),
+        for feeding_data, param in zip(text_inputter.make_eval_feeding_data(),
                                        self._model_configs["eval_data"]):
             tf.logging.info("Evaluation Source File: {}.".format(param["features_file"]))
             tf.logging.info("Evaluation Target File: {}.".format(param["labels_file"]))
             start_time = time.time()
-            result = evaluate(sess=sess,
-                              eval_op=estimator_spec.loss,
-                              feeding_data=feeding_data)
+            result = evaluate_with_attention(
+                sess=sess,
+                eval_op=estimator_spec.loss,
+                feeding_data=feeding_data,
+                attention_op=estimator_spec.predictions \
+                    if param["output_attention"] else None,
+                output_filename_prefix=param["labels_file"].strip().split("/")[-1])
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
                             .format(param["features_file"], str(time.time() - start_time)))
             tf.logging.info("Evaluation Score ({} on {}): {}"

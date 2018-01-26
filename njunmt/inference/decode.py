@@ -17,7 +17,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy
-import json
 import os
 import random
 import string
@@ -27,6 +26,7 @@ from tensorflow import gfile
 
 from njunmt.inference.attention import process_attention_output
 from njunmt.inference.attention import pack_batch_attention_dict
+from njunmt.inference.attention import dump_attentions
 from njunmt.utils.global_names import GlobalNames
 from njunmt.utils.misc import padding_batch_data
 
@@ -90,13 +90,11 @@ def evaluate_sentences(
     return _evaluate(sess, feed_dict, eval_op)
 
 
-def evaluate(
-        sess,
-        eval_op,
-        feeding_data):
+def evaluate(sess, eval_op, feeding_data):
     """ Evaluates data by loss.
 
     Args:
+        attention_op:
         sess: `tf.Session`.
         eval_op: Tensorflow operation, computing the loss.
         feeding_data: An iterable instance that each element
@@ -111,6 +109,43 @@ def evaluate(
         losses += loss * float(num_data)
         total_size += num_data
     loss = losses / float(total_size)
+    return loss
+
+
+def evaluate_with_attention(
+        sess,
+        eval_op,
+        feeding_data,
+        attention_op=None,
+        output_filename_prefix=None):
+    """ Evaluates data by loss.
+
+    Args:
+        attention_op:
+        sess: `tf.Session`.
+        eval_op: Tensorflow operation, computing the loss.
+        feeding_data: An iterable instance that each element
+          is a packed feeding dictionary for `sess`.
+        attention_op: Tensorflow operation for output attention.
+        output_filename_prefix: A string.
+
+    Returns: Total loss averaged by number of data samples.
+    """
+    losses = 0.
+    total_size = 0
+    attentions = {}
+    for ss_strs, tt_strs, feed_dict in feeding_data:
+        if attention_op is None:
+            loss = _evaluate(sess, feed_dict, eval_op)
+        else:
+            loss, atts = _evaluate(sess, feed_dict, [eval_op, attention_op])
+            attentions.update(pack_batch_attention_dict(
+                total_size, ss_strs, tt_strs, atts))
+        losses += loss * float(len(ss_strs))
+        total_size += len(ss_strs)
+    loss = losses / float(total_size)
+    if attention_op is not None:
+        dump_attentions(output_filename_prefix, attentions)
     return loss
 
 
@@ -293,6 +328,5 @@ def infer(
                   (tokenize_script, output, tmp_output_file))
         os.system("mv %s %s" % (tmp_output_file, output))
     if output_attention:
-        with gfile.GFile(output + ".attention", "wb") as f:
-            f.write(json.dumps(attentions).encode("utf-8"))
+        dump_attentions(output, attentions)
     return samples_src, samples_trg

@@ -293,6 +293,80 @@ class ParallelTextInputter(TextInputter):
             maximum_features_length, maximum_labels_length,
             maximum_encoded_features_length, maximum_encoded_labels_length)
 
+    def make_eval_feeding_data(self):
+        """ Processes the data files and return an iterable instance for loop,
+        especially for output_attention when EVAL.
+
+        Returns: An iterable instance or a list of iterable instances.
+
+        """
+        if self._features_file is None or self._labels_file is None:
+            raise ValueError("Both _features_file and _labels_file should be provided.")
+        if isinstance(self._features_file, list):
+            return [self._EvalParallelData(f, l)
+                    for f, l in zip(self._features_file, self._labels_file)]
+        return self._EvalParallelData(
+            self._features_file, self._labels_file)
+
+    def _EvalParallelData(self,
+                          features_file,
+                          labels_file):
+        """ Function for reading small scale parallel data for evaluation.
+
+        Args:
+            features_file: The path of features file.
+            labels_file: The path of labels file.
+
+        Returns: A list of feeding data.
+        """
+        eval_features = open_file(features_file, encoding="utf-8")
+        if gfile.Exists(labels_file):
+            eval_labels = open_file(labels_file, encoding="utf-8")
+        else:
+            eval_labels = open_file(labels_file + "0", encoding="utf-8")
+        ss_buf = []
+        tt_buf = []
+        ss_str_buf = []
+        tt_str_buf = []
+        for ss, tt in zip(eval_features, eval_labels):
+            ss_str = ss.strip().split(" ")
+            tt_str = tt.strip().split(" ")
+            ss_str_buf.append(ss_str)
+            tt_str_buf.append(tt_str)
+            ss_buf.append(self._vocab_source.convert_to_idlist(ss_str))
+            tt_buf.append(self._vocab_target.convert_to_idlist(tt_str))
+        close_file(eval_features)
+        close_file(eval_labels)
+        if self._bucketing:
+            tlen = numpy.array([len(t) for t in tt_buf])
+            tidx = tlen.argsort()
+            _ss_buf = [ss_buf[i] for i in tidx]
+            _tt_buf = [tt_buf[i] for i in tidx]
+            _ss_str_buf = [ss_str_buf[i] for i in tidx]
+            _tt_str_buf = [tt_str_buf[i] for i in tidx]
+            ss_buf = _ss_buf
+            tt_buf = _tt_buf
+            ss_str_buf = _ss_str_buf
+            tt_str_buf = _tt_str_buf
+        data = []
+        batch_data_idx = 0
+        while batch_data_idx < len(ss_buf):
+            x, len_x = padding_batch_data(
+                ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
+                self._vocab_source.eos_id)
+            y, len_y = padding_batch_data(
+                tt_buf[batch_data_idx: batch_data_idx + self._batch_size],
+                self._vocab_target.eos_id)
+            data.append((
+                ss_str_buf[batch_data_idx: batch_data_idx + self._batch_size],
+                tt_str_buf[batch_data_idx: batch_data_idx + self._batch_size], {
+                    self.input_fields[GlobalNames.PH_FEATURE_IDS_NAME]: x,
+                    self.input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]: len_x,
+                    self.input_fields[GlobalNames.PH_LABEL_IDS_NAME]: y,
+                    self.input_fields[GlobalNames.PH_LABEL_LENGTH_NAME]: len_y}))
+            batch_data_idx += self._batch_size
+        return data
+
     def _SmallParallelData(self,
                            features_file,
                            labels_file,

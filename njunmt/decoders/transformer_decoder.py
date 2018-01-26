@@ -168,6 +168,7 @@ class TransformerDecoder(Decoder):
                 else:
                     final_outputs = self._DecoderOutputSpec(
                         decoder_hidden=outputs,
+                        # transpose to [length_q, batch_size, num_heads length_k]
                         decoder_self_attention=nest.map_structure(
                             lambda x: tf.transpose(x, [2, 0, 1, 3]), decoder_self_attention),
                         encoder_decoder_attention=nest.map_structure(

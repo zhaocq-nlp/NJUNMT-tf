@@ -19,7 +19,7 @@ from __future__ import print_function
 import inspect
 import sys
 import six
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 import tensorflow as tf
 
 import njunmt

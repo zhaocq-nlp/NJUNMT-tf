@@ -13,6 +13,9 @@
 # limitations under the License.
 """ Common functions to process attention and pack for saving. """
 import numpy
+import json
+import tensorflow as tf
+from tensorflow import gfile
 
 
 def process_attention_output(predict_out, gather_idx):
@@ -47,9 +50,9 @@ def process_attention_output(predict_out, gather_idx):
             if num_shapes == 3:
                 # [n_timesteps_trg, batch_size, n_timesteps_src]
                 all_attentions[k_att] = gathered_att[:, gather_idx, :]
-            else:  # [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
-                # transpose to [batch_size, num_heads, n_timesteps_trg, n_timesteps_src]
-                all_attentions[k_att] = gathered_att[:, gather_idx, :, :].transpose([1, 2, 0, 3])
+            else:
+                # [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
+                all_attentions[k_att] = gathered_att[:, gather_idx, :, :]
     return all_attentions
 
 
@@ -93,12 +96,33 @@ def pack_batch_attention_dict(
                     "value": val[:len_trg, idx, :len_src].tolist(),
                     "type": "simple"})
             elif num_shapes == 4:
-                # [batch_size, num_heads, length_q, length_k]
-                att["attentions"].append({
-                    "name": key,
-                    "value": val[idx, :, :len_trg, :len_src].tolist(),
-                    "type": "multihead"})
+                if "decoder" in key:
+                    # with shape [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
+                    #  after slice [n_timesteps_trg, num_heads, n_timesteps_src]
+                    #    transpose to [num_heads, n_timesteps_trg, n_timesteps_src]
+                    att["attentions"].append({
+                        "name": key,
+                        "value": (val[:len_trg, idx, :, :len_src]).transpose([1, 0, 2]).tolist(),
+                        "type": "multihead"})
+                else:
+                    # with shape [batch_size, num_heads, n_timesteps_trg, n_timesteps_src]
+                    att["attentions"].append({
+                        "name": key,
+                        "value": val[idx, :, :len_trg, :len_src].tolist(),
+                        "type": "multihead"})
             else:
                 raise NotImplementedError
         ret_attentions[base_index + idx] = att
     return ret_attentions
+
+
+def dump_attentions(output_filename_prefix, attentions):
+    """ Dumps attention as json format.
+
+    Args:
+        output_filename_prefix: A string.
+        attentions: A dict of attention arrays.
+    """
+    tf.logging.info("Saving attention information into {}.attention.".format(output_filename_prefix))
+    with gfile.GFile(output_filename_prefix + ".attention", "wb") as f:
+        f.write(json.dumps(attentions).encode("utf-8"))
