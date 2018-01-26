@@ -276,6 +276,7 @@ class InferExperiment(Experiment):
                   feeding_data=feeding_data,
                   output=param["output_file"],
                   vocab_target=self._vocab_target,
+                  vocab_source=self._vocab_source,
                   alpha=self._model_configs["infer"]["length_penalty"],
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=param["output_attention"],
@@ -396,6 +397,8 @@ class EvalExperiment(Experiment):
                 sess=sess,
                 eval_op=estimator_spec.loss,
                 feeding_data=feeding_data,
+                vocab_source=self._vocab_source,
+                vocab_target=self._vocab_target,
                 attention_op=estimator_spec.predictions \
                     if param["output_attention"] else None,
                 output_filename_prefix=param["labels_file"].strip().split("/")[-1])

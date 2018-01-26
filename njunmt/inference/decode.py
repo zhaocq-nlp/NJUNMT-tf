@@ -116,16 +116,19 @@ def evaluate_with_attention(
         sess,
         eval_op,
         feeding_data,
+        vocab_source=None,
+        vocab_target=None,
         attention_op=None,
         output_filename_prefix=None):
     """ Evaluates data by loss.
 
     Args:
-        attention_op:
         sess: `tf.Session`.
         eval_op: Tensorflow operation, computing the loss.
         feeding_data: An iterable instance that each element
           is a packed feeding dictionary for `sess`.
+        vocab_source: A `Vocab` instance for source side feature map. For highlighting UNK.
+        vocab_target: A `Vocab` instance for target side feature map. For highlighting UNK.
         attention_op: Tensorflow operation for output attention.
         output_filename_prefix: A string.
 
@@ -139,6 +142,9 @@ def evaluate_with_attention(
             loss = _evaluate(sess, feed_dict, eval_op)
         else:
             loss, atts = _evaluate(sess, feed_dict, [eval_op, attention_op])
+            if vocab_source is not None:
+                ss_strs = [vocab_source.decorate_with_unk(ss) for ss in ss_strs]
+                tt_strs = [vocab_target.decorate_with_unk(tt) for tt in tt_strs]
             attentions.update(pack_batch_attention_dict(
                 total_size, ss_strs, tt_strs, atts))
         losses += loss * float(len(ss_strs))
@@ -265,6 +271,7 @@ def infer(
         feeding_data,
         output,
         vocab_target,
+        vocab_source=None,
         alpha=None,
         delimiter=" ",
         output_attention=False,
@@ -280,6 +287,7 @@ def infer(
           is a packed feeding dictionary for `sess`.
         output: Output file name, `str`.
         vocab_target: A `Vocab` instance for target side feature map.
+        vocab_source: A `Vocab` instance for source side feature map. For highlighting UNK.
         alpha: A scalar number, length penalty rate. If not provided
           or < 0, simply average each beam by length of predicted
           sequence.
@@ -316,6 +324,9 @@ def infer(
             # output attention
             if output_attention and att is not None:
                 source_tokens = [x.strip().split() for x in x_str]
+                if vocab_source is not None:
+                    source_tokens = [vocab_source.decorate_with_unk(x)
+                                     for x in source_tokens]
                 candidate_tokens = [vocab_target.convert_to_wordlist(
                     prediction[idx, :], bpe_decoding=False, reverse_seq=False)
                                     for idx in range(len(x_str))]

@@ -329,12 +329,12 @@ class ParallelTextInputter(TextInputter):
         ss_str_buf = []
         tt_str_buf = []
         for ss, tt in zip(eval_features, eval_labels):
-            ss_str = ss.strip().split(" ")
-            tt_str = tt.strip().split(" ")
+            ss_str = self._vocab_source.bpe_encode(ss.strip()).split(" ")
+            tt_str = self._vocab_target.bpe_encode(tt.strip()).split(" ")
             ss_str_buf.append(ss_str)
             tt_str_buf.append(tt_str)
-            ss_buf.append(self._vocab_source.convert_to_idlist(ss_str))
-            tt_buf.append(self._vocab_target.convert_to_idlist(tt_str))
+            ss_buf.append(self._vocab_source.convert_to_idlist(ss.strip()))
+            tt_buf.append(self._vocab_target.convert_to_idlist(tt.strip()))
         close_file(eval_features)
         close_file(eval_labels)
         if self._bucketing:

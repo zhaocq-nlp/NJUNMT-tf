@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-...
+Attention information with UNK noted.
 
 ### Changed
 ...
@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 ...
 
 ### Fixed
-...
+Bug when mode=EVAL and output attention with BPE.
 
 
 ## [0.6.0] - 2018-01-26
