@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 - ``input_prepose_processing_fn`` interface in decoders.
+- Redundant computation in TransformerDecoder (cache).
 
 ### Fixed
 ...
