@@ -12,12 +12,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Tensorflow 1.4 requirement.
-- Attention file format when output_attention flag is enabled with mode=INFER.
+- Attention file format when output_attention flag is enabled under mode=INFER/EVAL.
 - BPE in ``Vocab`` accepts an extra vocab file (also see --vocabulary in njunmt/tools/apply_bpe.py).
 - ``maximum_features_length`` and ``maximum_labels_length`` now indicate the length of encoded symbols (e.g. after BPE).
-- More flexible and concise code structure of decoders.
 - Attention interfaces.
 - ``BaseSeq2Seq`` -> ``SequenceToSequence``.
+- More flexible and concise code structure of decoders and ``EnsembleModel``.
 
 ### Removed
 - ``input_prepose_processing_fn`` interface in decoders.

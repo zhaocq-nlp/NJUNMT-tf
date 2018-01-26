@@ -181,10 +181,14 @@ def _infer(
         predict_out = sess.run(prediction_op,
                                feed_dict=feed_dict)
     else:
-        att_op = prediction_op.pop("attentions")
+        has_att = False
+        if "attentions" in prediction_op:
+            att_op = prediction_op.pop("attentions")
+            has_att = True
         predict_out = sess.run(prediction_op,
                                feed_dict=feed_dict)
-        prediction_op["attentions"] = att_op
+        if has_att:
+            prediction_op["attentions"] = att_op
     predicted_ids = predict_out["predicted_ids"]  # [n_timesteps_trg, batch_size * beam_size]
     beam_ids = predict_out["beam_ids"]  # [n_timesteps_trg, batch_size * beam_size]
     sequence_lengths = predict_out["sequence_lengths"]  # [n_timesteps_trg, batch_size * beam_size]

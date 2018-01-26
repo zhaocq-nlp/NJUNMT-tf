@@ -93,8 +93,7 @@ class EnsembleExperiment(Experiment):
         text_inputter = TextLineInputter(
             dataset=dataset,
             data_field_name="eval_features_file",
-            batch_size=self._model_configs["infer"]["batch_size"],
-            maximum_line_length=None)
+            batch_size=self._model_configs["infer"]["batch_size"])
         sess.run(tf.global_variables_initializer())
         tf.logging.info("Start inference.")
         overall_start_time = time.time()

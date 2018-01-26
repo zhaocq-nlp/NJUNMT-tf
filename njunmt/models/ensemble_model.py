@@ -72,42 +72,30 @@ def dynamic_ensemble_decode(
     # initialize first inputs (start of sentence) with shape [_batch*_beam,]
     initial_finished, initial_input_symbols = helper.init_symbols()
     initial_time = tf.constant(0, dtype=tf.int32)
-    initial_input_symbols_embed = nest.map_structure(
+    initial_inputs = nest.map_structure(
         lambda modality: _embed_words(modality, initial_input_symbols, initial_time),
         target_modalities)
 
-    inputs_preprocessing_fns = []
-    inputs_postprocessing_fns = []
-    initial_inputs = []
-    initial_decoder_states = []
-    decoding_params = []
-    for dec, enc_out, bri, inp in zip(decoders, encoder_outputs, bridges, initial_input_symbols_embed):
+    initial_caches = []
+    for dec, enc_out, bri in zip(decoders, encoder_outputs, bridges):
         with tf.variable_scope(dec.name):
-            inputs_preprocessing_fn, inputs_postprocessing_fn = dec.inputs_prepost_processing_fn()
-            inputs = inputs_postprocessing_fn(None, inp)
-            dec_states, dec_params = dec.prepare(enc_out, bri, helper)  # prepare decoder
-            dec_states = stack_beam_size(dec_states, helper.beam_size)
-            dec_params = stack_beam_size(dec_params, helper.beam_size)
-            # add to list
-            inputs_preprocessing_fns.append(inputs_preprocessing_fn)
-            inputs_postprocessing_fns.append(inputs_postprocessing_fn)
-            initial_inputs.append(inputs)
-            initial_decoder_states.append(dec_states)
-            decoding_params.append(dec_params)
+            init_cache = dec.prepare(enc_out, bri, helper)  # prepare decoder
+            init_cache = stack_beam_size(init_cache, helper.beam_size)
+            initial_caches.append(init_cache)
 
     initial_outputs_tas = nest.map_structure(
         lambda dec_out_rem, dec: nest.map_structure(
             _create_ta, dec_out_rem.apply(dec.output_dtype)),
         decoder_output_removers, decoders)
 
-    def body_infer(time, inputs, decoder_states, outputs_tas, finished,
+    def body_infer(time, inputs, caches, outputs_tas, finished,
                    log_probs, lengths, infer_status_ta):
         """Internal while_loop body.
 
         Args:
           time: Scalar int32 Tensor.
           inputs: A list of inputs Tensors.
-          decoder_states: A list of decoder states.
+          caches: A dict of decoder states.
           outputs_tas: A list of TensorArrays.
           finished: A bool tensor (keeping track of what's finished).
           log_probs: The log probability Tensor.
@@ -115,21 +103,17 @@ def dynamic_ensemble_decode(
           infer_status_ta: structure of TensorArray.
 
         Returns:
-          `(time + 1, next_inputs, next_decoder_states, next_outputs_tas,
+          `(time + 1, next_inputs, next_caches, next_outputs_tas,
           next_finished, next_log_probs, next_lengths, next_infer_status_ta)`.
         """
         # step decoder
         outputs = []
-        cur_inputs = []
-        next_decoder_states = []
-        for dec, inp, pre_fn, stat, dec_params in \
-                zip(decoders, inputs, inputs_preprocessing_fns, decoder_states, decoding_params):
+        next_caches = []
+        for dec, inp, cache in zip(decoders, inputs, caches):
             with tf.variable_scope(dec.name):
-                inp = pre_fn(time, inp)
-                out, next_stat = dec.step(inp, stat, dec_params)
-                cur_inputs.append(inp)
+                out, next_cache = dec.step(inp, cache)
                 outputs.append(out)
-                next_decoder_states.append(next_stat)
+                next_caches.append(next_cache)
         next_outputs_tas = []
         for out_ta, out, rem in zip(outputs_tas, outputs, decoder_output_removers):
             ta = nest.map_structure(lambda ta, out: ta.write(time, out),
@@ -141,11 +125,10 @@ def dynamic_ensemble_decode(
         # sample next symbols
         sample_ids, beam_ids, next_log_probs, next_lengths \
             = helper.sample_symbols(logits, log_probs, finished, lengths, time=time)
-        gathered_states = []
-        for next_stat in next_decoder_states:
-            gathered_states.append(gather_states(next_stat, beam_ids))
-        cur_inputs = nest.map_structure(lambda inp: gather_states(inp, beam_ids),
-                                        cur_inputs)
+
+        for c in next_caches:
+            c["decoding_states"] = gather_states(c["decoding_states"], beam_ids)
+
         infer_status = BeamSearchStateSpec(
             log_probs=next_log_probs,
             predicted_ids=sample_ids,
@@ -154,20 +137,18 @@ def dynamic_ensemble_decode(
         infer_status_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
                                              infer_status_ta, infer_status)
         next_finished, next_input_symbols = helper.next_symbols(time=time, sample_ids=sample_ids)
-        next_inputs_embed = nest.map_structure(lambda modality: _embed_words(modality, next_input_symbols, time + 1),
-                                               target_modalities)
+        next_inputs = nest.map_structure(
+            lambda modality: _embed_words(modality, next_input_symbols, time + 1),
+            target_modalities)
         next_finished = tf.logical_or(next_finished, finished)
-        next_inputs = []
-        for dec, cur_inp, next_inp, post_fn in zip(decoders, cur_inputs, next_inputs_embed, inputs_postprocessing_fns):
-            with tf.variable_scope(dec.name):
-                next_inputs.append(post_fn(cur_inp, next_inp))
-        return time + 1, next_inputs, gathered_states, next_outputs_tas, \
+
+        return time + 1, next_inputs, next_caches, next_outputs_tas, \
                next_finished, next_log_probs, next_lengths, infer_status_ta
 
     initial_log_probs = tf.zeros_like(initial_input_symbols, dtype=tf.float32)
     initial_lengths = tf.zeros_like(initial_input_symbols, dtype=tf.int32)
     initial_infer_status_ta = nest.map_structure(_create_ta, BeamSearchStateSpec.dtypes())
-    loop_vars = [initial_time, initial_inputs, initial_decoder_states,
+    loop_vars = [initial_time, initial_inputs, initial_caches,
                  initial_outputs_tas, initial_finished,
                  # infer vars
                  initial_log_probs, initial_lengths, initial_infer_status_ta]
