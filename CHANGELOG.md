@@ -1,6 +1,22 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+
+## [Unreleased]
+
+### Added
+Attention information with UNK noted.
+
+### Changed
+...
+
+### Removed
+...
+
+### Fixed
+Bug when mode=EVAL and output attention with BPE.
+
+
 ## [0.6.0] - 2018-01-26
 ### Added
 - Evaluation entrance (bin/eval.py).
@@ -42,5 +58,6 @@ All notable changes to this project will be documented in this file.
 - Sequence-to-sequence model with attention.
 
 
+[Unreleased]: https://github.com/zhaocq-nlp/NJUNMT-tf/compare/v0.6...master
 [0.6.0]: https://github.com/zhaocq-nlp/NJUNMT-tf/compare/v0.5...v0.6
 

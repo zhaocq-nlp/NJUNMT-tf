@@ -167,6 +167,18 @@ class Vocab(object):
         ss += [self.eos_id]
         return ss
 
+    def decorate_with_unk(self, words, unk_symbol="UNK"):
+        """ Append (UNK) to the words that are not in the vocabulary.
+
+        Args:
+            words: A list of word tokens.
+            unk_symbol: A unk symbol.
+
+        Returns: A list of word tokens.
+        """
+        return [w if w in self.vocab_dict else w + "({})".format(unk_symbol)
+                for w in words]
+
     def convert_to_wordlist(self, pred_ids, bpe_decoding=True, reverse_seq=True):
         """ Converts list of token ids to list of word tokens.
 
