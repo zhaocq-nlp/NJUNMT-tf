@@ -135,8 +135,9 @@ def crossentropy_s(logits, targets, sequence_length):
             dtype=tf.float32), [1, 0])
 
     losses = losses * loss_mask
-    loss = tf.reduce_sum(losses, axis=0) / tf.to_float(sequence_length)
-    return tf.reduce_sum(loss)
+    loss = tf.reduce_sum(losses, axis=0)
+    return tf.reduce_mean(loss)
+
 
 def smoothing_crossentropy_t(logits, targets, sequence_length):
     """ Computes cross entropy loss of a batch of data with label smoothing.
