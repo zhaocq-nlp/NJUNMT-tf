@@ -57,6 +57,8 @@ def _get_optimizer(name, **params):
         return tf.contrib.layers.OPTIMIZER_CLS_NAMES[name](**params)
     if name == "LazyAdam":
         return tf.contrib.opt.LazyAdamOptimizer(**params)
+    if name == "Adadelta":
+        return tf.train.AdadeltaOptimizer(**params)
     raise ValueError("Unknown optimizer name: {}".format(name))
 
 
