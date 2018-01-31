@@ -69,8 +69,8 @@ class Modality(Configurable):
             "timing should be one of \"sinusoids\", \"emb\" or None")
         assert self.params["multiply_embedding_mode"] in ["sqrt_depth", None], (
             "multiply_embedding_mode should be one of \"sqrt_depth\" or None")
-        assert self.params["loss"].lower() in ["crossentropy", "smoothing_crossentropy"], (
-            "loss should be crossentropy or smoothing_crossentropy")
+        # assert self.params["loss"].lower() in ["crossentropy", "smoothing_crossentropy"], (
+        #     "loss should be crossentropy or smoothing_crossentropy")
         assert self.params["initializer"] in ["random_uniform", "random_normal", None], (
             "initializer should be random_uniform, random_normal, or None")
 
