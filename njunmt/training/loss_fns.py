@@ -111,6 +111,33 @@ def crossentropy_t(logits, targets, sequence_length):
     return loss
 
 
+def crossentropy_s(logits, targets, sequence_length):
+    """ Computes cross entropy loss of a batch of data. (Not averaged by batch_size)
+
+    The final loss is averaged by the number of tokens in the batch.
+
+    Args:
+        logits: The logits Tensor with shape [timesteps, batch_size, vocab_size].
+        targets: The gold labels Tensor with shape [timesteps, batch_size].
+        sequence_length: The length of `targets`, [batch_size, ]
+
+    Returns: A float32 Scalar.
+    """
+    # [timesteps, batch_size]
+    losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        logits=logits, labels=targets)
+
+    # [timesteps, batch_size]
+    loss_mask = tf.transpose(
+        tf.sequence_mask(
+            lengths=tf.to_int32(sequence_length),
+            maxlen=tf.to_int32(tf.shape(targets)[0]),
+            dtype=tf.float32), [1, 0])
+
+    losses = losses * loss_mask
+    loss = tf.reduce_sum(losses, axis=0) / tf.to_float(sequence_length)
+    return tf.reduce_sum(loss)
+
 def smoothing_crossentropy_t(logits, targets, sequence_length):
     """ Computes cross entropy loss of a batch of data with label smoothing.
 
