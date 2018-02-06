@@ -118,7 +118,7 @@ class TextLineInputter(TextInputter):
         for ss in features:
             if maximum_line_length and len(ss.strip().split()) > maximum_line_length:
                 continue
-            encoded_ss = self._vocab.convert_to_idlist(ss.strip().split(" "))
+            encoded_ss = self._vocab.convert_to_idlist(ss.strip().split())
             if maximum_encoded_length and len(encoded_ss) - 1 > maximum_encoded_length:
                 continue
             bpe_ss = self._vocab.bpe_encode(ss.strip())
@@ -329,8 +329,8 @@ class ParallelTextInputter(TextInputter):
         ss_str_buf = []
         tt_str_buf = []
         for ss, tt in zip(eval_features, eval_labels):
-            ss_str = self._vocab_source.bpe_encode(ss.strip()).split(" ")
-            tt_str = self._vocab_target.bpe_encode(tt.strip()).split(" ")
+            ss_str = self._vocab_source.bpe_encode(ss.strip()).split()
+            tt_str = self._vocab_target.bpe_encode(tt.strip()).split()
             ss_str_buf.append(ss_str)
             tt_str_buf.append(tt_str)
             ss_buf.append(self._vocab_source.convert_to_idlist(ss.strip()))
@@ -404,10 +404,10 @@ class ParallelTextInputter(TextInputter):
                 continue
             if maximum_labels_length and len(tt.strip().split()) > maximum_labels_length:
                 continue
-            encoded_ss = self._vocab_source.convert_to_idlist(ss.strip().split(" "))
+            encoded_ss = self._vocab_source.convert_to_idlist(ss.strip().split())
             if maximum_encoded_features_length and len(encoded_ss) - 1 > maximum_encoded_features_length:
                 continue
-            encoded_tt = self._vocab_target.convert_to_idlist(tt.strip().split(" "))
+            encoded_tt = self._vocab_target.convert_to_idlist(tt.strip().split())
             if maximum_encoded_labels_length and len(encoded_tt) - 1 > maximum_encoded_labels_length:
                 continue
             ss_buf.append(encoded_ss)
@@ -512,7 +512,7 @@ class ParallelTextInputter(TextInputter):
             ss_tmp = self._features.readline()
             if ss_tmp == "":
                 return ""
-            ss_tmp = ss_tmp.strip().split(" ")
+            ss_tmp = ss_tmp.strip().split()
             if self._maximum_features_length and len(ss_tmp) > self._maximum_features_length:
                 return None
             encoded_ss = self._parent._vocab_source.convert_to_idlist(ss_tmp)
@@ -525,7 +525,7 @@ class ParallelTextInputter(TextInputter):
             tt_tmp = self._labels.readline()
             if tt_tmp == "":
                 return ""
-            tt_tmp = tt_tmp.strip().split(" ")
+            tt_tmp = tt_tmp.strip().split()
             if self._maximum_labels_length and len(tt_tmp) > self._maximum_labels_length:
                 return None
             encoded_tt = self._parent._vocab_target.convert_to_idlist(tt_tmp)
