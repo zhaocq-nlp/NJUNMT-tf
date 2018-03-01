@@ -161,7 +161,6 @@ def _infer(
         feed_dict,
         prediction_op,
         batch_size,
-        alpha=None,
         top_k=1,
         output_attention=False):
     """ Infers a batch of samples with beam search.
@@ -211,7 +210,6 @@ def infer_sentences(
         input_fields,
         prediction_op,
         vocab_source,
-        alpha=None,
         top_k=1,
         n_words_src=-1):
     """ Infers a list of sentences.
@@ -242,7 +240,7 @@ def infer_sentences(
     ph_x_len = input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]
     x, len_x = padding_batch_data(sources, vocab_source.eos_id)
     feed_dict = {ph_x: x, ph_x_len: len_x}
-    return _infer(sess, feed_dict, prediction_op, len(sources), alpha, top_k)
+    return _infer(sess, feed_dict, prediction_op, len(sources), top_k)
 
 
 def infer(
@@ -252,7 +250,6 @@ def infer(
         output,
         vocab_target,
         vocab_source=None,
-        alpha=None,
         delimiter=" ",
         output_attention=False,
         tokenize_output=False,
@@ -288,7 +285,7 @@ def infer(
         cnt = 0
         for x_str, x_len, feeding_batch in feeding_data:
             prediction, att = _infer(sess, feeding_batch, prediction_op,
-                                     len(x_str), alpha=alpha, top_k=1,
+                                     len(x_str), top_k=1,
                                      output_attention=output_attention)
             y_str = [delimiter.join(vocab_target.convert_to_wordlist(prediction[sample_idx]))
                      for sample_idx in range(prediction.shape[0])]

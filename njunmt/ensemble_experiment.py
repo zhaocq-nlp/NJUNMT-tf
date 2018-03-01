@@ -107,7 +107,6 @@ class EnsembleExperiment(Experiment):
                   feeding_data=feeding_data,
                   output=param["output_file"],
                   vocab_target=self._vocab_target,
-                  alpha=self._model_configs["infer"]["length_penalty"],
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=False,
                   tokenize_output=self._model_configs["infer"]["char_level"],

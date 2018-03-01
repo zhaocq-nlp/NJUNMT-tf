@@ -390,7 +390,6 @@ class BleuMetricSpec(TextMetricSpec):
             feeding_data=self._eval_feeding_data,
             output=output_prediction_file,
             vocab_target=self._dataset.vocab_target,
-            alpha=self._model_configs["model_params"]["inference.length_penalty"],
             delimiter=self._delimiter,
             output_attention=False,
             tokenize_output=self._char_level,

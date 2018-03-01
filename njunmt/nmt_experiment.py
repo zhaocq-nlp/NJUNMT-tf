@@ -277,7 +277,6 @@ class InferExperiment(Experiment):
                   output=param["output_file"],
                   vocab_target=self._vocab_target,
                   vocab_source=self._vocab_source,
-                  alpha=self._model_configs["infer"]["length_penalty"],
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=param["output_attention"],
                   tokenize_output=self._model_configs["infer"]["char_level"],
