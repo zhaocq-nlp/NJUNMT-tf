@@ -27,6 +27,7 @@ from njunmt.utils.beam_search import finished_beam_one_entry_bias
 from njunmt.utils.beam_search import expand_to_beam_size
 from njunmt.utils.beam_search import compute_batch_indices
 from njunmt.utils.beam_search import gather_states
+from njunmt.utils.beam_search import compute_length_penalty
 
 
 def _unstack_ta(inp):
@@ -77,15 +78,9 @@ class Feedback:
             maximum_labels_length: The maximum sequence length
               that decoder generates.
         """
-        self._beam_size = 1
         self._vocab = vocab
         self._maximum_labels_length = tf.convert_to_tensor(
             maximum_labels_length, name="max_sequence_length")
-
-    @property
-    def beam_size(self):
-        """ Returns the beam width. """
-        return self._beam_size
 
     @property
     def vocab(self):
@@ -119,7 +114,7 @@ class ScheduleSampleFeedback(Feedback):
             label_ids: The gold labels Tensor, with shape [batch_size, maximum_labels_length].
             label_length: The length Tensor of `label_ids`, with shape [batch_size, ]
         """
-        super(TrainingFeedback, self).__init__(vocab, label_length)
+        super(ScheduleSampleFeedback, self).__init__(vocab, label_length)
         label_ids = tf.convert_to_tensor(label_ids)  # [batch, len]
         self.label_ids = label_ids  # for transformer
 
@@ -211,8 +206,6 @@ class BeamFeedback(Feedback):
         self._batch_size = batch_size
         self._beam_size = beam_size
         self._alpha = alpha
-        if alpha is None or alpha < 0.0:
-            self._alpha = 0.0
         self._ensemble_weights = ensemble_weight
 
     def init_symbols(self):
@@ -309,8 +302,7 @@ class BeamFeedback(Feedback):
         lengths = lengths + 1 - tf.to_int32(finished)
         # compute beam score
         #  length_penalty: [batch_size * beam_size,]
-        length_penalty = tf.pow(
-            ((5.0 + tf.to_float(lengths)) / 6.0), -self._alpha)
+        length_penalty = compute_length_penalty(lengths, self._alpha)
         scores = log_probs * tf.expand_dims(length_penalty, axis=1)
 
         # flatten: [batch_size, beam_size * target_vocab_size]

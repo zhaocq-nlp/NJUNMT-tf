@@ -23,7 +23,7 @@ import tensorflow as tf
 
 class BeamSearchStateSpec(
     namedtuple(
-        "BeamSearchStat", "log_probs predicted_ids beam_ids lengths")):
+        "BeamSearchStat", "log_probs beam_ids")):
     """ A class wrapper for namedtuple.  """
 
     @staticmethod
@@ -31,9 +31,7 @@ class BeamSearchStateSpec(
         """ Returns the types of this namedtuple. """
         return BeamSearchStateSpec(
             log_probs=tf.float32,
-            predicted_ids=tf.int32,
-            beam_ids=tf.int32,
-            lengths=tf.int32)
+            beam_ids=tf.int32)
 
 
 def stack_beam_size(tensors, beam_size):
@@ -151,7 +149,7 @@ def expand_to_beam_size(tensor, beam_size, axis=0):
     return tf.tile(tensor, tile_dims)
 
 
-def compute_batch_indices(batch_size, beam_size):
+def compute_batch_indices(batch_size, k):
     """ Computes the i'th coordinate that contains the batch index for gathers.
 
     Batch pos is a tensor like [[0,0,0,0,],[1,1,1,1],..]. It says which
@@ -160,11 +158,60 @@ def compute_batch_indices(batch_size, beam_size):
 
     Args:
         batch_size: A python integer, the batch size.
-        beam_size: A python integer, the beam width.
+        k: A python integer, the beam width.
 
     Returns: A Tensor.
     """
     # [beam_size, batch_size]: [[0, 1, 2,..., batch_size], [0, 1, 2,..., batch_size], ...]
-    batch_pos = expand_to_beam_size(tf.range(batch_size), beam_size)
+    batch_pos = expand_to_beam_size(tf.range(batch_size), k)
     batch_pos = tf.transpose(batch_pos)
     return batch_pos
+
+
+def compute_length_penalty(lengths, alpha):
+    """ Computes length penalty, Referring
+      to https://arxiv.org/abs/1609.08144.
+
+    Args:
+        lengths: The length tensor, with shape [n, ]
+        alpha: The length penalty rate. Length penalty is given by
+          (5+len(decode)/6) ^ -\alpha.
+    Returns: The length penalty tensor.
+    """
+    if alpha is None or alpha < 0.0:
+        alpha = 0.0
+    return ((5.0 + tf.to_float(lengths)) / 6.0) ** (-alpha)
+
+
+def process_beam_predictions(decoding_result, beam_size, alpha):
+    """ Processes beam search results.
+
+    Args:
+        decoding_result: A dict returned by
+        beam_size: An integer, the beam width.
+        alpha: The length penalty rate.
+
+    Returns: A dict.
+    """
+    # [_batch * _beam, ]
+    log_probs = decoding_result["log_probs"][-1]
+    length = decoding_result["decoding_length"]
+    hypothesis = decoding_result["hypothesis"]
+    if alpha is None or alpha < 0.0:
+        penalty = 1.0 / tf.to_float(length)
+    else:
+        penalty = compute_length_penalty(length, alpha)
+    scores = log_probs * penalty
+    # [_batch * _beam, ] => [_batch, _beam]
+    scores_flat = tf.reshape(scores, [-1, beam_size])
+    # [_batch, _beam]
+    top_scores, top_indices = tf.nn.top_k(scores_flat, k=beam_size)
+    batch_beam_pos = compute_batch_indices(tf.shape(top_indices)[0], k=beam_size) * beam_size
+    # [_batch * _beam, ]
+    top_indices = tf.reshape(top_indices + batch_beam_pos, [-1])
+    # [_batch * _beam, timesteps]
+    sorted_hypothesis = tf.gather(hypothesis, top_indices)
+    decoding_result["sorted_hypothesis"] = sorted_hypothesis
+    decoding_result["scores"] = scores_flat
+    decoding_result["sorted_argidx"] = top_indices
+    return decoding_result

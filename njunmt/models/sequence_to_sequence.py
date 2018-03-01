@@ -30,6 +30,7 @@ from njunmt.utils.configurable import Configurable
 from njunmt.utils.configurable import deep_merge_dict
 from njunmt.utils.global_names import GlobalNames
 from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.beam_search import process_beam_predictions
 
 # import all bridges
 BRIDGE_CLSS = [
@@ -152,7 +153,7 @@ class SequenceToSequence(Configurable):
 
             encdec_bridge = self._create_bridge(encoder_output)
             decoder = self._create_decoder()
-            decoder_output, infer_status = self._decode(
+            decoder_output, decoding_res = self._decode(
                 decoder=decoder,
                 encdec_bridge=encdec_bridge,
                 encoder_output=encoder_output,
@@ -160,8 +161,8 @@ class SequenceToSequence(Configurable):
                 input_fileds=input_fields)
 
             final_outputs = self._pack_output(
-                encoder_output, decoder_output,
-                infer_status, target_modality, **input_fields)
+                encoder_output, decoder_output, decoding_res,
+                target_modality, **input_fields)
         return final_outputs
 
     def _compute_loss(self, logits, label_ids, label_length, target_modality):
@@ -209,9 +210,10 @@ class SequenceToSequence(Configurable):
                 maximum_labels_length=self.params["inference.maximum_labels_length"],
                 beam_size=self.params["inference.beam_size"],
                 alpha=self.params["inference.length_penalty"])
-        decoder_output, infer_status = decoder.decode(
-            encoder_output, encdec_bridge, helper, target_modality)
-        return decoder_output, infer_status
+        decoder_output, decoding_res = decoder.decode(
+            encoder_output, encdec_bridge, helper, target_modality,
+            beam_size=self.params["inference.beam_size"])
+        return decoder_output, decoding_res
 
     def _encode(self, encoder, input_modality, input_fields):
         """ Calls encoder's encode method.
@@ -283,7 +285,7 @@ class SequenceToSequence(Configurable):
     def _pack_output(self,
                      encoder_output,
                      decoder_output,
-                     infer_status,
+                     decoding_result,
                      target_modality,
                      **kwargs):
         """ Packs model outputs.
@@ -294,10 +296,10 @@ class SequenceToSequence(Configurable):
             decoder_output: An instance of `collections.namedtuple`
               whose element types are defined by `Decoder.output_dtype`
               property.
-            infer_status: An instance of `collections.namedtuple`
-              whose element types are defined by `BeamSearchStateSpec`,
-              indicating the status of beam search if mode==INFER, else,
-              a logits Tensor with shape [timesteps, batch_size, vocab_size].
+            decoding_result: A dict containing hypothesis, log
+              probabilities, beam ids and decoding length if
+              mode==INFER, else, a logits Tensor with shape
+              [timesteps, batch_size, vocab_size].
             target_modality: An instance of `Modality`.
             **kwargs:
 
@@ -306,7 +308,7 @@ class SequenceToSequence(Configurable):
         """
         if self.mode == ModeKeys.TRAIN or self.mode == ModeKeys.EVAL:
             loss = self._compute_loss(
-                logits=infer_status,  # [timesteps, batch_size, dim]
+                logits=decoding_result,  # [timesteps, batch_size, dim]
                 label_ids=kwargs[GlobalNames.PH_LABEL_IDS_NAME],
                 label_length=kwargs[GlobalNames.PH_LABEL_LENGTH_NAME],
                 target_modality=target_modality)
@@ -317,7 +319,7 @@ class SequenceToSequence(Configurable):
 
         def get_attention(name, atts):
             if isinstance(atts, list):
-                for idx, a in enumerate(atts): # for multi-layer
+                for idx, a in enumerate(atts):  # for multi-layer
                     attentions[name + str(idx)] = a
             else:
                 attentions[name] = atts
@@ -334,10 +336,9 @@ class SequenceToSequence(Configurable):
             return loss, attentions
 
         assert self.mode == ModeKeys.INFER
-        predict_out = dict()
-        predict_out["predicted_ids"] = infer_status.predicted_ids
-        predict_out["sequence_lengths"] = infer_status.lengths
-        predict_out["beam_ids"] = infer_status.beam_ids
-        predict_out["log_probs"] = infer_status.log_probs
+        predict_out = process_beam_predictions(
+            decoding_result=decoding_result,
+            beam_size=self.params["inference.beam_size"],
+            alpha=self.params["inference.length_penalty"])
         predict_out["attentions"] = attentions
         return predict_out

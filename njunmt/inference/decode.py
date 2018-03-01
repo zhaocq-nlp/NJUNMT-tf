@@ -29,6 +29,7 @@ from njunmt.inference.attention import pack_batch_attention_dict
 from njunmt.inference.attention import dump_attentions
 from njunmt.utils.global_names import GlobalNames
 from njunmt.utils.misc import padding_batch_data
+from njunmt.utils.beam_search import compute_length_penalty
 
 
 def _evaluate(
@@ -183,46 +184,25 @@ def _infer(
       The `attention_scores` is None if there is no attention
       related information in `prediction_op`.
     """
+    brief_pred_op = dict()
+    brief_pred_op["hypothesis"] = prediction_op["sorted_hypothesis"]
     if output_attention:
-        predict_out = sess.run(prediction_op,
-                               feed_dict=feed_dict)
-    else:
-        has_att = False
-        if "attentions" in prediction_op:
-            att_op = prediction_op.pop("attentions")
-            has_att = True
-        predict_out = sess.run(prediction_op,
-                               feed_dict=feed_dict)
-        if has_att:
-            prediction_op["attentions"] = att_op
-    predicted_ids = predict_out["predicted_ids"]  # [n_timesteps_trg, batch_size * beam_size]
-    beam_ids = predict_out["beam_ids"]  # [n_timesteps_trg, batch_size * beam_size]
-    sequence_lengths = predict_out["sequence_lengths"]  # [n_timesteps_trg, batch_size * beam_size]
-    log_probs = predict_out["log_probs"]  # [n_timesteps_trg, batch_size * beam_size]
+        brief_pred_op["sorted_argidx"] = prediction_op["sorted_argidx"]
+        brief_pred_op["attentions"] = prediction_op["attentions"]
+        brief_pred_op["beam_ids"] = prediction_op["beam_ids"]
+        pass
 
-    gathered_pred_ids = numpy.zeros_like(beam_ids)  # [n_timesteps_trg, batch_size * beam_size]
-    for idx in range(beam_ids.shape[0]):
-        gathered_pred_ids = gathered_pred_ids[:, beam_ids[idx]]
-        gathered_pred_ids[idx, :] = predicted_ids[idx]
-    gathered_pred_ids = gathered_pred_ids.transpose()  # [batch_size * beam_size, n_timesteps_trg]
-
-    lengths = numpy.array(sequence_lengths[-1], dtype=numpy.float32)
-    if alpha is None or alpha < 0.:
-        penalty = lengths
-    else:
-        penalty = ((5.0 + lengths) / 6.0) ** alpha
-
-    scores = log_probs[-1] / penalty
-    beam_size = scores.shape[0] // batch_size
-    scores = scores.reshape([-1, beam_size])  # [batch_size, beam_size]
-
-    argidx = numpy.argsort(scores, axis=1)[:, ::-1]  # descending order: [batch_size, beam_size]
-    argidx += numpy.tile(numpy.arange(batch_size) * beam_size, [beam_size, 1]).transpose()
-    argidx = numpy.reshape(argidx[:, :top_k], -1)
+    predict_out = sess.run(brief_pred_op, feed_dict=feed_dict)
+    num_samples = predict_out["hypothesis"].shape[0]
+    beam_size = num_samples // batch_size
+    # [batch_, beam_]
+    batch_beam_pos = numpy.tile(numpy.arange(batch_size) * beam_size, [beam_size, 1]).transpose()
+    batch_beam_pos = numpy.reshape(batch_beam_pos[:, :top_k], -1)
     if output_attention:
+        argidx = predict_out.pop("sorted_argidx")[batch_beam_pos]
         attentions = process_attention_output(predict_out, argidx)
-        return gathered_pred_ids[argidx, :], attentions
-    return gathered_pred_ids[argidx, :], None
+        return predict_out["hypothesis"][batch_beam_pos, :], attentions
+    return predict_out["hypothesis"][batch_beam_pos, :], None
 
 
 def infer_sentences(

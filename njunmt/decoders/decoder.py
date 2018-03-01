@@ -121,7 +121,7 @@ class Decoder(Configurable):
         return None
 
     def decode(self, encoder_output, bridge, helper,
-               target_modality):
+               target_modality, **kwargs):
         """ Decodes one sample.
 
         Args:
@@ -134,13 +134,13 @@ class Decoder(Configurable):
             target_modality: An instance of `Modality`, that deals
               with transformations from symbols to tensors or from
               tensors to symbols (the decoder top and bottom layer).
+            kwargs:
 
         Returns: A tuple `(decoder_output, decoder_status)`. The
           `decoder_output` is an instance of `collections.namedtuple`
           whose element types are defined by `output_dtype` property.
-          For mode=INFER, the `decoder_status` is an instance of
-          `collections.namedtuple` whose element types are defined by
-          `BeamSearchStateSpec`, indicating the status of beam search.
+          For mode=INFER, the `decoder_status` is a dict containing
+          hypothesis, log probabilities, beam ids and decoding length.
           For mode=TRAIN/EVAL, the `decoder_status` is a `tf.Tensor`
           indicating logits (computed by `target_modality`), of shape
           [timesteps, batch_size, vocab_size].
@@ -150,10 +150,11 @@ class Decoder(Configurable):
             encoder_output=encoder_output,
             bridge=bridge,
             helper=helper,
-            target_modality=target_modality)
+            target_modality=target_modality,
+            **kwargs)
         if self.mode == ModeKeys.INFER:
-            outputs, infer_stat = ret_val
-            return outputs, infer_stat
+            outputs, bs_results = ret_val
+            return outputs, bs_results
         logits = _compute_logits(self, target_modality, ret_val)
         return ret_val, logits
 
@@ -192,6 +193,7 @@ def initialize_cache(
     Returns: A dict.
     """
     cache = {"decoding_states": decoding_states}
+    # encoder-related information (not influenced by beam search)
     if attention_keys is not None:
         cache["attention_keys"] = attention_keys
     if memory is not None:
@@ -225,7 +227,8 @@ def dynamic_decode(decoder,
                    helper,
                    target_modality,
                    parallel_iterations=32,
-                   swap_memory=False):
+                   swap_memory=False,
+                   **kwargs):
     """ Performs dynamic decoding with `decoder`.
 
     Call `prepare()` once and `step()` repeatedly on the `Decoder` object.
@@ -243,8 +246,9 @@ def dynamic_decode(decoder,
           tensors to symbols (the decoder top and bottom layer).
         parallel_iterations: Argument passed to `tf.while_loop`.
         swap_memory: Argument passed to `tf.while_loop`.
+        kwargs:
 
-    Returns: A tuple `(decoder_output, infer_status_tuple)` for
+    Returns: A tuple `(decoder_output, decoder_status)` for
       decoder.mode=INFER.
       `decoder_output` for decoder.mode=TRAIN/INFER.
     """
@@ -269,7 +273,9 @@ def dynamic_decode(decoder,
     with tf.variable_scope(decoder.name):
         initial_cache = decoder.prepare(encoder_output, bridge, helper)  # prepare decoder
         if decoder.mode == ModeKeys.INFER:
-            initial_cache = stack_beam_size(initial_cache, helper.beam_size)
+            assert "beam_size" in kwargs
+            beam_size = kwargs["beam_size"]
+            initial_cache = stack_beam_size(initial_cache, beam_size)
 
     initial_outputs_ta = nest.map_structure(
         _create_ta, decoder_output_remover.apply(decoder.output_dtype))
@@ -297,21 +303,24 @@ def dynamic_decode(decoder,
         sample_ids = None
         if decoder.mode == ModeKeys.INFER:
             log_probs, lengths = args[0], args[1]
-            infer_status_ta = args[2]
+            bs_stat_ta = args[2]
+            predicted_ids = args[3]
             logits = _compute_logits(decoder, target_modality, outputs)
             # sample next symbols
             sample_ids, beam_ids, next_log_probs, next_lengths \
                 = helper.sample_symbols(logits, log_probs, finished, lengths, time=time)
+            predicted_ids = gather_states(tf.reshape(predicted_ids, [-1, time + 1]), beam_ids)
 
             next_cache["decoding_states"] = gather_states(next_cache["decoding_states"], beam_ids)
-            infer_status = BeamSearchStateSpec(
+            bs_stat = BeamSearchStateSpec(
                 log_probs=next_log_probs,
-                predicted_ids=sample_ids,
-                beam_ids=beam_ids,
-                lengths=next_lengths)
-            infer_status_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
-                                                 infer_status_ta, infer_status)
-            inner_loop_vars.extend([next_log_probs, next_lengths, infer_status_ta])
+                beam_ids=beam_ids)
+            bs_stat_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
+                                            bs_stat_ta, bs_stat)
+            next_predicted_ids = tf.concat([predicted_ids, tf.expand_dims(sample_ids, axis=1)], axis=1)
+            next_predicted_ids = tf.reshape(next_predicted_ids, [-1])
+            next_predicted_ids.set_shape([None])
+            inner_loop_vars.extend([next_log_probs, next_lengths, bs_stat_ta, next_predicted_ids])
 
         next_finished, next_input_symbols = helper.next_symbols(time=time, sample_ids=sample_ids)
         next_inputs = _embed_words(target_modality, next_input_symbols, time + 1)
@@ -328,8 +337,11 @@ def dynamic_decode(decoder,
     if decoder.mode == ModeKeys.INFER:  # add inference-specific parameters
         initial_log_probs = tf.zeros_like(initial_input_symbols, dtype=tf.float32)
         initial_lengths = tf.zeros_like(initial_input_symbols, dtype=tf.int32)
-        initial_infer_status_ta = nest.map_structure(_create_ta, BeamSearchStateSpec.dtypes())
-        loop_vars.extend([initial_log_probs, initial_lengths, initial_infer_status_ta])
+        initial_bs_stat_ta = nest.map_structure(_create_ta, BeamSearchStateSpec.dtypes())
+        # to process hypothesis
+        initial_input_symbols.set_shape([None])
+        loop_vars.extend([initial_log_probs, initial_lengths, initial_bs_stat_ta,
+                          initial_input_symbols])
 
     res = tf.while_loop(
         lambda *args: tf.logical_not(tf.reduce_all(args[4])),
@@ -342,7 +354,13 @@ def dynamic_decode(decoder,
     final_outputs = nest.map_structure(lambda ta: ta.stack(), final_outputs_ta)
 
     if decoder.mode == ModeKeys.INFER:
-        final_infer_status = nest.map_structure(lambda ta: ta.stack(), res[-1])
-        return final_outputs, final_infer_status
+        timesteps = res[0] + 1
+        log_probs, length, bs_stat, predicted_ids = res[-4:]
+        final_bs_stat = nest.map_structure(lambda ta: ta.stack(), bs_stat)
+        return final_outputs, \
+               {"beam_ids": final_bs_stat.beam_ids,
+                "log_probs": final_bs_stat.log_probs,
+                "decoding_length": length,
+                "hypothesis": tf.reshape(predicted_ids, [-1, timesteps])[:, 1:]}
 
     return final_outputs
