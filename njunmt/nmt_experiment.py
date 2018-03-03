@@ -30,7 +30,7 @@ from njunmt.utils.configurable import parse_params
 from njunmt.utils.configurable import print_params
 from njunmt.utils.configurable import update_eval_metric
 from njunmt.utils.configurable import update_infer_params
-from njunmt.utils.metrics import multi_bleu_score
+from njunmt.utils.metrics import multi_bleu_score_from_file
 from njunmt.utils.misc import optimistic_restore
 
 
@@ -285,11 +285,11 @@ class InferExperiment(Experiment):
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
                             .format(param["features_file"], str(time.time() - start_time)))
             if param["labels_file"] is not None:
-                bleu_score = multi_bleu_score(
-                    self._model_configs["infer"]["multibleu_script"],
-                    param["labels_file"], param["output_file"])
-                tf.logging.info("BLEU score ({}): {}"
-                                .format(param["features_file"], bleu_score))
+                bleu_score = multi_bleu_score_from_file(
+                    hypothesis_file=param["output_file"],
+                    references_files=param["labels_file"])
+                tf.logging.info("BLEU score (%s): %.2f"
+                                % (param["features_file"], bleu_score))
         tf.logging.info("Total Elapsed Time: %s" % str(time.time() - overall_start_time))
 
 

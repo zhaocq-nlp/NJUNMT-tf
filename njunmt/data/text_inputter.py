@@ -134,7 +134,7 @@ class TextLineInputter(TextInputter):
             str_x = str_buf[batch_data_idx: batch_data_idx + self._batch_size]
             batch_data_idx += self._batch_size
             data.append((
-                str_x, len_x,
+                str_x,
                 {self.input_fields[GlobalNames.PH_FEATURE_IDS_NAME]: x,
                  self.input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]: len_x}))
         return data
@@ -279,17 +279,8 @@ class ParallelTextInputter(TextInputter):
         """
         if features_file is None or labels_file is None:
             raise ValueError("Both features_file and labels_file should be provided.")
-        line_count = 0
-        with gfile.GFile(features_file) as fp:
-            for _ in fp:
-                line_count += 1
-        if line_count > self._cache_size or self._batch_tokens_size is not None:
-            return self._BigParallelData(
-                self, features_file, labels_file,
-                maximum_features_length, maximum_labels_length,
-                maximum_encoded_features_length, maximum_encoded_labels_length)
-        return self._SmallParallelData(
-            features_file, labels_file,
+        return self._BigParallelData(
+            self, features_file, labels_file,
             maximum_features_length, maximum_labels_length,
             maximum_encoded_features_length, maximum_encoded_labels_length)
 
@@ -320,10 +311,8 @@ class ParallelTextInputter(TextInputter):
         Returns: A list of feeding data.
         """
         eval_features = open_file(features_file, encoding="utf-8")
-        if gfile.Exists(labels_file):
-            eval_labels = open_file(labels_file, encoding="utf-8")
-        else:
-            eval_labels = open_file(labels_file + "0", encoding="utf-8")
+        eval_labels = open_file(labels_file[0], encoding="utf-8")
+
         ss_buf = []
         tt_buf = []
         ss_str_buf = []
@@ -367,77 +356,6 @@ class ParallelTextInputter(TextInputter):
             batch_data_idx += self._batch_size
         return data
 
-    def _SmallParallelData(self,
-                           features_file,
-                           labels_file,
-                           maximum_features_length=None,
-                           maximum_labels_length=None,
-                           maximum_encoded_features_length=None,
-                           maximum_encoded_labels_length=None):
-        """ Function for reading small scale parallel data.
-
-        Args:
-            features_file: The path of features file.
-            labels_file: The path of labels file.
-            maximum_features_length: The maximum sequence length of "features" field.
-              If provided, sentences exceeding this value will be ignore.
-            maximum_labels_length: The maximum sequence length of "labels" field.
-              If provided, sentences exceeding this value will be ignore.
-            maximum_encoded_features_length: The maximum length of feature symbols (especially
-              after BPE is applied) . If provided, the number of symbols of one sentence
-              exceeding this value will be ignore.
-            maximum_encoded_labels_length: The maximum length of label symbols (especially
-              after BPE is applied) . If provided, the number of symbols of one sentence
-              exceeding this value will be ignore.
-
-        Returns: A list of feeding data.
-        """
-        eval_features = open_file(features_file, encoding="utf-8")
-        if gfile.Exists(labels_file):
-            eval_labels = open_file(labels_file, encoding="utf-8")
-        else:
-            eval_labels = open_file(labels_file + "0", encoding="utf-8")
-        ss_buf = []
-        tt_buf = []
-        for ss, tt in zip(eval_features, eval_labels):
-            if maximum_features_length and len(ss.strip().split()) > maximum_features_length:
-                continue
-            if maximum_labels_length and len(tt.strip().split()) > maximum_labels_length:
-                continue
-            encoded_ss = self._vocab_source.convert_to_idlist(ss.strip().split())
-            if maximum_encoded_features_length and len(encoded_ss) - 1 > maximum_encoded_features_length:
-                continue
-            encoded_tt = self._vocab_target.convert_to_idlist(tt.strip().split())
-            if maximum_encoded_labels_length and len(encoded_tt) - 1 > maximum_encoded_labels_length:
-                continue
-            ss_buf.append(encoded_ss)
-            tt_buf.append(encoded_tt)
-        close_file(eval_features)
-        close_file(eval_labels)
-        if self._bucketing:
-            tlen = numpy.array([len(t) for t in tt_buf])
-            tidx = tlen.argsort()
-            _ss_buf = [ss_buf[i] for i in tidx]
-            _tt_buf = [tt_buf[i] for i in tidx]
-            ss_buf = _ss_buf
-            tt_buf = _tt_buf
-        data = []
-        batch_data_idx = 0
-        while batch_data_idx < len(ss_buf):
-            x, len_x = padding_batch_data(
-                ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                self._vocab_source.eos_id)
-            y, len_y = padding_batch_data(
-                tt_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                self._vocab_target.eos_id)
-            batch_data_idx += self._batch_size
-            data.append((len(len_x), {
-                self.input_fields[GlobalNames.PH_FEATURE_IDS_NAME]: x,
-                self.input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]: len_x,
-                self.input_fields[GlobalNames.PH_LABEL_IDS_NAME]: y,
-                self.input_fields[GlobalNames.PH_LABEL_LENGTH_NAME]: len_y}))
-        return data
-
     class _BigParallelData(object):
         """ An iterator class for reading parallel data. """
 
@@ -468,9 +386,8 @@ class ParallelTextInputter(TextInputter):
             """
             self._parent = parent
             self._features_file = features_file
-            self._labels_file = labels_file
-            if not gfile.Exists(self._labels_file):
-                self._labels_file = self._labels_file + "0"
+            self._labels_file = labels_file[0] if isinstance(labels_file, list) \
+                else labels_file
             self._maximum_features_length = maximum_features_length
             self._maximum_labels_length = maximum_labels_length
             self._maximum_encoded_features_length = maximum_encoded_features_length

@@ -25,11 +25,12 @@ from njunmt.nmt_experiment import Experiment
 from njunmt.nmt_experiment import InferExperiment
 from njunmt.utils.configurable import parse_params
 from njunmt.utils.configurable import print_params
-from njunmt.utils.metrics import multi_bleu_score
+from njunmt.utils.metrics import multi_bleu_score_from_file
 
 
 class EnsembleExperiment(Experiment):
     """ Define an experiment for ensemble model. """
+
     def __init__(self,
                  model_configs,
                  model_dirs,
@@ -42,6 +43,7 @@ class EnsembleExperiment(Experiment):
             weight_scheme: A string, the ensemble weights. See
               `EnsembleModel.get_ensemble_weights()` for more details.
         """
+        super(EnsembleExperiment, self).__init__()
         self._model_dirs = model_dirs
         self._weight_scheme = weight_scheme
         infer_options = parse_params(
@@ -115,9 +117,9 @@ class EnsembleExperiment(Experiment):
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
                             .format(param["features_file"], str(time.time() - start_time)))
             if param["labels_file"] is not None:
-                bleu_score = multi_bleu_score(
-                    self._model_configs["infer"]["multibleu_script"],
-                    param["labels_file"], param["output_file"])
-                tf.logging.info("BLEU score ({}): {}"
-                                .format(param["features_file"], bleu_score))
+                bleu_score = multi_bleu_score_from_file(
+                    hypothesis_file=param["output_file"],
+                    references_files=param["labels_file"])
+                tf.logging.info("BLEU score (%s): %.2f"
+                                % (param["features_file"], bleu_score))
         tf.logging.info("Total Elapsed Time: %s" % str(time.time() - overall_start_time))

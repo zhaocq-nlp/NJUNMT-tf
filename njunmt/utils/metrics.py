@@ -12,12 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ Define metric function to evaluation translation results. """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import sys
 import subprocess
 import tensorflow as tf
 
+from njunmt.utils.bleu import corpus_bleu
+from njunmt.utils.misc import open_file
+from njunmt.utils.misc import get_labels_file
+from njunmt.utils.misc import deprecated
 
-def multi_bleu_score(multibleu_script, ground_truth_file, prediction_file):
+
+@deprecated
+def multi_bleu_score2(multibleu_script, ground_truth_file, prediction_file):
     """ Runs multi-bleu.perl script and returns the BLEU result.
 
     Args:
@@ -45,3 +55,41 @@ def multi_bleu_score(multibleu_script, ground_truth_file, prediction_file):
         tf.logging.info(e)
         bleu = 0.
     return bleu
+
+
+def multi_bleu_score(hypothesis, references):
+    """ Computes corpus-level BLEU.
+
+    Args:
+        hypothesis: A 1-d string list.
+        references: A 2-d string list, has the same size
+          with hypothesis.
+    Returns: A float.
+    """
+    assert (len(hypothesis) == len(references)), "{} vs. {}".format(len(hypothesis), len(references))
+    try:
+        bleu, _ = corpus_bleu(hypothesis, references)
+        bleu = bleu[0]
+    except Exception as e:
+        tf.logging.info(e)
+        bleu = 0.
+    return bleu * 100
+
+
+def multi_bleu_score_from_file(hypothesis_file, references_files):
+    """ Computes corpus-level BLEU from hypothesis file
+      and reference file(s).
+
+    Args:
+        hypothesis_file: A string.
+        references_files: A string. The name of reference file or the prefix.
+    Returns: A float.
+    """
+    with open_file(hypothesis_file) as fp:
+        hypothesis = fp.readlines()
+    references = []
+    for ref_file in get_labels_file(references_files):
+        with open_file(ref_file) as fp:
+            references.append(fp.readlines())
+    references = list(map(list, zip(*references)))
+    return multi_bleu_score(hypothesis, references)

@@ -285,3 +285,23 @@ def shuffle_data(from_binding, to_binding):
         from_=",".join(from_binding),
         to_=",".join(to_binding))
     os.system(cmd)
+
+def get_labels_file(labels_file):
+    """ Gets the list of labels file.
+
+    Args:
+        labels_file: A string, the prefix of the labels file.
+
+    Returns: A list or None.
+    """
+    if labels_file is None:
+        return None
+    ret = []
+    if gfile.Exists(labels_file):
+        ret.append(labels_file)
+    else:
+        idx = 0
+        while gfile.Exists(labels_file + str(idx)):
+            ret.append(labels_file + str(idx))
+            idx += 1
+    return ret

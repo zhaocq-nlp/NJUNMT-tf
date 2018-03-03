@@ -17,9 +17,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy
-import os
-import random
-import string
 import re
 import tensorflow as tf
 from tensorflow import gfile
@@ -29,7 +26,7 @@ from njunmt.inference.attention import pack_batch_attention_dict
 from njunmt.inference.attention import dump_attentions
 from njunmt.utils.global_names import GlobalNames
 from njunmt.utils.misc import padding_batch_data
-from njunmt.utils.beam_search import compute_length_penalty
+from njunmt.tools.tokenizeChinese import to_chinese_char
 
 
 def _evaluate(
@@ -105,10 +102,10 @@ def evaluate(sess, eval_op, feeding_data):
     """
     losses = 0.
     total_size = 0
-    for num_data, feed_dict in feeding_data:
+    for n_samples, feed_dict in feeding_data:
         loss = _evaluate(sess, feed_dict, eval_op)
-        losses += loss * float(num_data)
-        total_size += num_data
+        losses += loss * float(n_samples)
+        total_size += n_samples
     loss = losses / float(total_size)
     return loss
 
@@ -189,7 +186,6 @@ def _infer(
         brief_pred_op["sorted_argidx"] = prediction_op["sorted_argidx"]
         brief_pred_op["attentions"] = prediction_op["attentions"]
         brief_pred_op["beam_ids"] = prediction_op["beam_ids"]
-        pass
 
     predict_out = sess.run(brief_pred_op, feed_dict=feed_dict)
     num_samples = predict_out["hypothesis"].shape[0]
@@ -275,50 +271,39 @@ def infer(
         tokenize_script: The script for `tokenize_output`.
         verbose: Print inference information if set True.
 
-    Returns: A tuple `(sample_src, sample_trg)`, two lists of
-      strings. Sample from `feeding_data`.
+    Returns: A tuple `(sources, hypothesis)`, two lists of
+      strings.
     """
     attentions = dict()
-    samples_src = []
-    samples_trg = []
-    with gfile.GFile(output, "w") as fw:
-        cnt = 0
-        for x_str, x_len, feeding_batch in feeding_data:
-            prediction, att = _infer(sess, feeding_batch, prediction_op,
-                                     len(x_str), top_k=1,
-                                     output_attention=output_attention)
-            y_str = [delimiter.join(vocab_target.convert_to_wordlist(prediction[sample_idx]))
-                     for sample_idx in range(prediction.shape[0])]
-            fw.write('\n'.join(y_str) + "\n")
-            # random sample
-            if random.random() < 0.3 and len(samples_src) < 5:
-                for sample_idx in range(len(x_str)):
-                    samples_src.append(x_str[sample_idx])
-                    samples_trg.append(y_str[sample_idx])
-                    if len(samples_src) >= 5:
-                        break
+    hypothesis = []
+    sources = []
+    cnt = 0
+    for x_str, feeding_batch in feeding_data:
+        prediction, att = _infer(sess, feeding_batch, prediction_op,
+                                 len(x_str), top_k=1,
+                                 output_attention=output_attention)
+        sources.extend(x_str)
+        hypothesis.extend([delimiter.join(vocab_target.convert_to_wordlist(prediction[sample_idx]))
+                         for sample_idx in range(prediction.shape[0])])
+        if output_attention and att is not None:
+            source_tokens = [x.strip().split() for x in x_str]
+            if vocab_source is not None:
+                source_tokens = [vocab_source.decorate_with_unk(x)
+                                 for x in source_tokens]
+            candidate_tokens = [vocab_target.convert_to_wordlist(
+                prediction[idx, :], bpe_decoding=False, reverse_seq=False)
+                                for idx in range(len(x_str))]
 
-            # output attention
-            if output_attention and att is not None:
-                source_tokens = [x.strip().split() for x in x_str]
-                if vocab_source is not None:
-                    source_tokens = [vocab_source.decorate_with_unk(x)
-                                     for x in source_tokens]
-                candidate_tokens = [vocab_target.convert_to_wordlist(
-                    prediction[idx, :], bpe_decoding=False, reverse_seq=False)
-                                    for idx in range(len(x_str))]
-
-                attentions.update(pack_batch_attention_dict(
-                    cnt, source_tokens, candidate_tokens, att))
-            cnt += len(x_str)
-            if verbose:
-                tf.logging.info(cnt)
+            attentions.update(pack_batch_attention_dict(
+                cnt, source_tokens, candidate_tokens, att))
+        cnt += len(x_str)
+        if verbose:
+            tf.logging.info(cnt)
     if tokenize_output:
-        tmp_output_file = output + ''.join((''.join(
-            random.sample(string.digits + string.ascii_letters, 10))).split())
-        os.system("python %s %s %s" %
-                  (tokenize_script, output, tmp_output_file))
-        os.system("mv %s %s" % (tmp_output_file, output))
+        hypothesis = to_chinese_char(hypothesis)
+    if output:
+        with gfile.GFile(output, "w") as fw:
+            fw.write("\n".join(hypothesis) + "\n")
     if output_attention:
         dump_attentions(output, attentions)
-    return samples_src, samples_trg
+    return sources, hypothesis

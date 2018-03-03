@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
 import collections
 from tensorflow import gfile
 from njunmt.data.bpe_encdec import BPE
@@ -171,13 +172,19 @@ class Vocab(object):
         """ Append (UNK) to the words that are not in the vocabulary.
 
         Args:
-            words: A list of word tokens.
+            words: A string or a list of word tokens.
             unk_symbol: A unk symbol.
 
-        Returns: A list of word tokens.
+        Returns: A string or a list of word tokens.
         """
-        return [w if w in self.vocab_dict else w + "({})".format(unk_symbol)
-                for w in words]
+        if isinstance(words, list):
+            return [w if w in self.vocab_dict else w + "({})".format(unk_symbol)
+                    for w in words]
+        elif isinstance(words, six.string_types):
+            return " ".join([w if w in self.vocab_dict else w + "({})".format(unk_symbol)
+                             for w in words.strip().split()])
+        else:
+            raise ValueError("Unrecognized type: {}".format(type(words)))
 
     def convert_to_wordlist(self, pred_ids, bpe_decoding=True, reverse_seq=True):
         """ Converts list of token ids to list of word tokens.
@@ -216,7 +223,7 @@ class Vocab(object):
             if item >= self.vocab_size:
                 raise ValueError("id {} exceeded the size of vocabulary (size={})".format(item, self.vocab_size))
             return self.vocab_r_dict[item]
-        elif type(item) is str:
+        elif isinstance(item, six.string_types):
             return self.vocab_dict[item] if item in self.vocab_dict else self.unk_id
         else:
             raise ValueError("Unrecognized type of item: %s" % str(type(item)))

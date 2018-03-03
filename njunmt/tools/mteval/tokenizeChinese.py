@@ -1,12 +1,32 @@
-# encoding=utf-8
-# script of python2.7
-# the tokenization of Chinese text contains two steps: separate each Chinese characters (by utf-8 encoding); tokenize the non Chinese part (following the mteval script). 
-# Shujian Huang huangsj@nju.edu.cn
+# Copyright 2017 Natural Language Processing Group, Nanjing University, zhaocq.nlp@gmail.com.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+""" The tokenization of Chinese text contains two steps: separate each Chinese characters (by utf-8 encoding); tokenize the non Chinese part (following the mteval script).
+Refer to https://github.com/NJUNLP/ZhTokenizer
+"""
 import re
 import sys
+import codecs
 
 
-def isChineseChar(uchar):
+def is_chinese_char(uchar):
+    """ Whether is a chinese character.
+
+    Args:
+        uchar: A utf-8 char.
+
+    Returns: True/False.
+    """
     if uchar >= u'\u3400' and uchar <= u'\u4db5':  # CJK Unified Ideographs Extension A, release 3.0
         return True
     elif uchar >= u'\u4e00' and uchar <= u'\u9fa5':  # CJK Unified Ideographs, release 1.1
@@ -54,77 +74,92 @@ def isChineseChar(uchar):
     else:
         return False
 
-def tokenizeString(sentence, lc=False):
-    """
-    :param sentence: input sentence
-    :param lc: flag of lowercase. default=True
-    :return: tokenized sentence, with \n
-    """
-   
-    sentence = sentence.decode("utf-8")
 
+def to_chinese_char(sentence):
+    """ Converts a Chinese sentence to character level.
+
+    Args:
+        sentence: A utf-8 string.
+
+    Returns: A utf-8 string.
+    """
     sentence = sentence.strip()
 
     sentence_in_chars = ""
     for c in sentence:
-        if isChineseChar(c):
+        if is_chinese_char(c):
             sentence_in_chars += " "
-            sentence_in_chars += c 
+            sentence_in_chars += c
             sentence_in_chars += " "
         else:
-            sentence_in_chars += c 
+            sentence_in_chars += c
     sentence = sentence_in_chars
 
-    if lc:
-        sentence = sentence.lower()
-    
     # tokenize punctuation
     sentence = re.sub(r'([\{-\~\[-\` -\&\(-\+\:-\@\/])', r' \1 ', sentence)
-    
+
     # tokenize period and comma unless preceded by a digit
     sentence = re.sub(r'([^0-9])([\.,])', r'\1 \2 ', sentence)
-    
+
     # tokenize period and comma unless followed by a digit
     sentence = re.sub(r'([\.,])([^0-9])', r' \1 \2', sentence)
-    
+
     # tokenize dash when preceded by a digit
     sentence = re.sub(r'([0-9])(-)', r'\1 \2 ', sentence)
-    
+
     # one space only between words
     sentence = re.sub(r'\s+', r' ', sentence)
-    
-    # no leading space    
+
+    # no leading space
     sentence = re.sub(r'^\s+', r'', sentence)
 
-    # no trailing space    
+    # no trailing space
     sentence = re.sub(r'\s+$', r'', sentence)
-
-    #sentence += "\n"
-
-    sentence = sentence.encode("utf-8")
-
-
     return sentence
 
 
-def tokenizeSentence(inputFile, outputFile):
-    file_r = open(inputFile, 'r')  # input file
-    file_w = open(outputFile, 'w')  # result file
-#<seg id="1">-28 "老欧洲" Chef Found ， 就是背井离乡来到旧金山追求财富的巴西人 Mall</seg>
+def tokenize_sgm_file(input_xml_file, output_xml_file):
+    """ Converts Chinese sentence from input file to output file (XML file).
+
+    Args:
+        input_xml_file: A string.
+        output_xml_file: A string.
+    """
+    file_r = codecs.open(input_xml_file, 'r', encoding="utf-8")  # input file
+    file_w = codecs.open(output_xml_file, 'w', encoding="utf-8")  # result file
 
     for sentence in file_r:
         if sentence.startswith("<seg"):
-          start = sentence.find(">") + 1
-          end = sentence.rfind("<")
-        #new_sentence = tokenizeString(sentence)
-          new_sentence = sentence[:start] +  tokenizeString(sentence[start:end]) + sentence[end:]
+            start = sentence.find(">") + 1
+            end = sentence.rfind("<")
+            new_sentence = sentence[:start] + to_chinese_char(sentence[start:end]) + sentence[end:]
         else:
-          new_sentence = tokenizeString(sentence) + "\n"
+            new_sentence = sentence
         file_w.write(new_sentence)
-    
+
+    file_r.close()
+    file_w.close()
+
+
+def tokenize_plain_file(input_file, output_file):
+    """ Converts Chinese sentence from input file to output file (plain text file).
+
+    Args:
+        input_file: A string.
+        output_file: A string.
+    """
+    file_r = codecs.open(input_file, 'r', encoding="utf-8")  # input file
+    file_w = codecs.open(output_file, 'w', encoding="utf-8")  # result file
+
+    for sentence in file_r:
+        file_w.write(to_chinese_char(sentence) + "\n")
+
     file_r.close()
     file_w.close()
 
 
 if __name__ == '__main__':
-    tokenizeSentence(sys.argv[1], sys.argv[2])
+    if sys.argv[1].endswith(".sgm"):
+        tokenize_sgm_file(sys.argv[1], sys.argv[2])
+    else:
+        tokenize_plain_file(sys.argv[1], sys.argv[2])

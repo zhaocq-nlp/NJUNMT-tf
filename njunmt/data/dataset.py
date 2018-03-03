@@ -16,17 +16,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
 
 from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.misc import get_labels_file
 
 
 class Dataset(object):
     """ Class for training data and evaluation data """
-    _input_fields = None
 
     def __init__(self,
                  vocab_source,
@@ -50,9 +52,13 @@ class Dataset(object):
         self._train_features_file = train_features_file
         self._train_labels_file = train_labels_file
         self._eval_features_file = eval_features_file
-        self._eval_labels_file = eval_labels_file
-        if Dataset._input_fields is None:
-            Dataset._input_fields = Dataset._make_input_fields()
+        if isinstance(eval_labels_file, list):
+            self._eval_labels_file = [get_labels_file(f) for f in eval_labels_file]
+        elif isinstance(eval_labels_file, six.string_types):
+            self._eval_labels_file = get_labels_file(eval_labels_file)
+        else:
+            self._eval_labels_file = None
+        self._input_fields = Dataset._make_input_fields()
 
     @staticmethod
     def _make_input_fields():
@@ -93,9 +99,9 @@ class Dataset(object):
     @property
     def input_fields(self):
         """ Returns the dictionary of placeholders. """
-        if Dataset._input_fields is None:
-            Dataset._input_fields = Dataset._make_input_fields()
-        return Dataset._input_fields
+        if self._input_fields is None:
+            self._input_fields = Dataset._make_input_fields()
+        return self._input_fields
 
     @property
     def vocab_source(self):

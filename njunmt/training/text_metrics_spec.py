@@ -23,6 +23,7 @@ from abc import ABCMeta, abstractmethod
 
 import numpy
 import six
+import random
 import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.training import saver as saver_lib
@@ -38,6 +39,7 @@ from njunmt.utils.global_names import GlobalNames
 from njunmt.utils.global_names import ModeKeys
 from njunmt.utils.metrics import multi_bleu_score
 from njunmt.utils.misc import get_dict_from_collection
+from njunmt.utils.misc import open_file
 from njunmt.utils.summary_writer import SummaryWriter
 
 
@@ -297,7 +299,6 @@ class BleuMetricSpec(TextMetricSpec):
         self._delimiter = delimiter
         self._char_level = char_level
         self._tokenize_script = tokenize_script
-        self._multibleu_script = multibleu_script
         self._early_stop = early_stop
         self._estop_patience_max = estop_patience
         self._maximum_keep_models = maximum_keep_models
@@ -320,32 +321,6 @@ class BleuMetricSpec(TextMetricSpec):
             fw.write(','.join([str(x) for x in self._best_checkpoint_bleus]) + "\n")
             fw.write(','.join([x for x in self._best_checkpoint_names]) + "\n")
 
-    def _check_bleu_script(self):
-        """ Checks the correctness of the multi-bleu script.
-
-        Returns: True/False
-
-        Raises:
-            OSError: if multi-bleu script not exists, or if
-              evaluation labels file not exits, or if BLEU score
-              is not correct.
-        """
-        if not gfile.Exists(self._multibleu_script):
-            raise OSError("File not found. Fail to open multi-bleu scrip: {}"
-                          .format(self._multibleu_script))
-        if gfile.Exists(self._eval_labels_file):
-            pseudo_predictions = self._eval_labels_file
-        else:
-            pseudo_predictions = self._eval_labels_file + "0"
-            if not gfile.Exists(pseudo_predictions):
-                raise OSError("File not found. Fail to open eval_labels_file: {} or {}"
-                              .format(self._eval_labels_file, pseudo_predictions))
-        score = multi_bleu_score(self._multibleu_script, self._eval_labels_file, pseudo_predictions)
-        if int(score) < 100:
-            raise OSError("Fail to run multi-bleu scrip: {}. "
-                          "The evaluation output is {} which should be 100"
-                          .format(self._multibleu_script, score))
-
     def _prepare(self):
         """ Prepares for evaluation.
 
@@ -362,7 +337,8 @@ class BleuMetricSpec(TextMetricSpec):
             beam_size=self._beam_size,
             maximum_labels_length=self._maximum_labels_length,
             length_penalty=self._length_penalty)
-        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.INFER, dataset=self._dataset,
+        estimator_spec = model_fn(model_configs=self._model_configs,
+                                  mode=ModeKeys.INFER, dataset=self._dataset,
                                   name=self._model_name, reuse=True, verbose=False)
         self._predict_ops = estimator_spec.predictions
         tmp_trans_dir = os.path.join(self._model_configs["model_dir"], GlobalNames.TMP_TRANS_DIRNAME)
@@ -370,9 +346,15 @@ class BleuMetricSpec(TextMetricSpec):
             gfile.MakeDirs(tmp_trans_dir)
         self._tmp_trans_file_prefix = os.path.join(tmp_trans_dir, GlobalNames.TMP_TRANS_FILENAME_PREFIX)
         self._read_ckpt_bleulog()
-        self._eval_labels_file = self._dataset.eval_labels_file
-        self._check_bleu_script()
-        self._estop_patience = 0
+        # load references
+        self._references = []
+        for rfile in self._dataset.eval_labels_file:
+            with open_file(rfile) as fp:
+                self._references.append(fp.readlines())
+        self._references = list(map(list, zip(*self._references)))
+        with open_file(self._dataset.eval_features_file) as fp:
+            self._sources = fp.readlines()
+        self._bad_count = 0
         self._best_bleu_score = 0.
 
     def _do_evaluation(self, run_context, global_step):
@@ -384,7 +366,7 @@ class BleuMetricSpec(TextMetricSpec):
         """
         start_time = time.time()
         output_prediction_file = self._tmp_trans_file_prefix + str(global_step)
-        samples_src, samples_trg = infer(
+        inputs, hypothesis = infer(
             sess=run_context.session,
             prediction_op=self._predict_ops,
             feeding_data=self._eval_feeding_data,
@@ -396,18 +378,26 @@ class BleuMetricSpec(TextMetricSpec):
             tokenize_script=self._tokenize_script,
             verbose=False)
         # print translation samples
-        for idx, (s, p) in enumerate(zip(samples_src, samples_trg)):
-            tf.logging.info("Sample%d Source: %s" % (idx, s))
-            tf.logging.info("Sample%d Prediction: %s\n" % (idx, p))
+        random_start = random.randint(0, len(hypothesis) - 5)
+        for idx in range(5):
+            tf.logging.info("Sample%d Source: %s" % (idx, self._sources[idx + random_start].strip()))
+            encoded_input = inputs[idx + random_start].strip().split()
+            encoded_input = [x + "(UNK)" if self._dataset.vocab_source[x] == self._dataset.vocab_source.unk_id
+                             else x for x in encoded_input]
+            tf.logging.info("Sample%d Encoded Input: %s" % (idx, " ".join(encoded_input)))
+            tf.logging.info("Sample%d Reference: %s" % (idx, self._references[idx + random_start][0].strip()))
+            tf.logging.info("Sample%d Hypothesis: %s\n" % (idx, hypothesis[idx + random_start].strip()))
         # evaluate with BLEU
-        bleu = multi_bleu_score(self._multibleu_script, self._eval_labels_file, output_prediction_file)
+        bleu = multi_bleu_score(hypothesis, self._references)
         if self._summary_writer is not None:
             self._summary_writer.add_summary("Metrics/BLEU", bleu, global_step)
         _, elapsed_time_all = self._timer.update_last_triggered_step(global_step)
-        tf.logging.info("Evaluating DEVSET: BLEU=%.2f (Best %.2f)  GlobalStep=%d    UD %.2f   UDfromStart %.2f"
-                        % (bleu, self._best_bleu_score, global_step,
-                           time.time() - start_time, elapsed_time_all))
         self._update_bleu_ckpt(run_context, bleu, global_step)
+        tf.logging.info(
+            "Evaluating DEVSET: BLEU=%.2f (Best %.2f)  GlobalStep=%d  BadCount=%d  "
+            "UD %.2f  UDfromStart %.2f" % (
+                bleu, self._best_bleu_score, global_step, self._bad_count,
+                time.time() - start_time, elapsed_time_all))
 
     def _update_bleu_ckpt(self, run_context, bleu, global_step):
         """ Updates the best checkpoints according to BLEU score and
@@ -425,10 +415,10 @@ class BleuMetricSpec(TextMetricSpec):
         """
         if bleu >= self._best_bleu_score:
             self._best_bleu_score = bleu
-            self._estop_patience = 0
+            self._bad_count = 0
         else:
-            self._estop_patience += 1
-        if self._estop_patience >= self._estop_patience_max and self._early_stop:
+            self._bad_count += 1
+        if self._bad_count >= self._estop_patience_max and self._early_stop:
             tf.logging.info("early stop.")
             run_context.request_stop()
         # saving checkpoints if eval_steps and save_checkpoint_steps mismatch
