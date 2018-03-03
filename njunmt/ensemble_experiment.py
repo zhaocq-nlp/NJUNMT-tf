@@ -112,7 +112,6 @@ class EnsembleExperiment(Experiment):
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=False,
                   tokenize_output=self._model_configs["infer"]["char_level"],
-                  tokenize_script=self._model_configs["infer"]["tokenize_script"],
                   verbose=True)
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
                             .format(param["features_file"], str(time.time() - start_time)))

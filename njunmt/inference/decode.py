@@ -249,7 +249,6 @@ def infer(
         delimiter=" ",
         output_attention=False,
         tokenize_output=False,
-        tokenize_script="./njunmt/tools/tokenizeChinese.py",
         verbose=True):
     """ Infers data and save the prediction results.
 
@@ -268,7 +267,6 @@ def infer(
         output_attention: Whether to output attention information.
         tokenize_output: Whether to split words into characters
           (only for Chinese).
-        tokenize_script: The script for `tokenize_output`.
         verbose: Print inference information if set True.
 
     Returns: A tuple `(sources, hypothesis)`, two lists of

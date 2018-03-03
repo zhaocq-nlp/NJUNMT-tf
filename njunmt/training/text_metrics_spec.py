@@ -255,8 +255,6 @@ class BleuMetricSpec(TextMetricSpec):
                  length_penalty=None,
                  delimiter=" ",
                  maximum_keep_models=5,
-                 multibleu_script="./njunmt/tools/multi-bleu.perl",
-                 tokenize_script="./njunmt/tools/tokenizeChinese.py",
                  char_level=False,
                  early_stop=True,
                  estop_patience=30,
@@ -279,8 +277,6 @@ class BleuMetricSpec(TextMetricSpec):
             delimiter: The delimiter of output token sequence.
             maximum_keep_models: The maximum number of models that will have a
               backup according to the BLEU score.
-            multibleu_script: The multi-bleu script path.
-            tokenize_script: The tokenizeChinese.py script path.
             char_level: Whether to split words into characters (only for Chinese).
             early_stop: Whether to early stop the program when the model does not
               improve BLEU anymore.
@@ -298,7 +294,6 @@ class BleuMetricSpec(TextMetricSpec):
         self._length_penalty = length_penalty
         self._delimiter = delimiter
         self._char_level = char_level
-        self._tokenize_script = tokenize_script
         self._early_stop = early_stop
         self._estop_patience_max = estop_patience
         self._maximum_keep_models = maximum_keep_models
@@ -375,7 +370,6 @@ class BleuMetricSpec(TextMetricSpec):
             delimiter=self._delimiter,
             output_attention=False,
             tokenize_output=self._char_level,
-            tokenize_script=self._tokenize_script,
             verbose=False)
         # print translation samples
         random_start = random.randint(0, len(hypothesis) - 5)

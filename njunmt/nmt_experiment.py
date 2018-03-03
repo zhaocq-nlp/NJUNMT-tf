@@ -206,9 +206,7 @@ class InferExperiment(Experiment):
             "length_penalty": -1.0,
             "maximum_labels_length": 150,
             "delimiter": " ",
-            "char_level": False,
-            "tokenize_script": "./njunmt/tools/tokenizeChinese.py",
-            "multibleu_script": "./njunmt/tools/multi-bleu.perl"}
+            "char_level": False}
 
     @staticmethod
     def default_inferdata_params():
@@ -280,7 +278,6 @@ class InferExperiment(Experiment):
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=param["output_attention"],
                   tokenize_output=self._model_configs["infer"]["char_level"],
-                  tokenize_script=self._model_configs["infer"]["tokenize_script"],
                   verbose=True)
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
                             .format(param["features_file"], str(time.time() - start_time)))

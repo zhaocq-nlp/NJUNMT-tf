@@ -81,8 +81,6 @@ metrics:
       delimiter: " "  # output delimiter, by default: " "(space)
       char_level: false  # whether output in char-level, by default: false
       maximum_keep_models: 5  # maximum keeping checkpoints in tar.gz format, by default: 5
-      multibleu_script: ./seq2seq/tools/multi-bleu.perl  # multi-bleu script, by default: ./seq2seq/tools/multi-bleu.perl
-      tokenize_script: ./seq2seq/tools/tokenizeChinese.py  # script to char-level, by default: ./seq2seq/tools/tokenizeChinese.py
       early_step: true  # whether to use BLEU to do early stop, by default: true
       estop_patience: 30  # the maximum patience for early stop
       do_summary: true  # whether make summaries for tensorboard, by default: true
@@ -140,10 +138,6 @@ infer:
   delimiter: " "
   # output in charactor level, for inference only, by default: false
   char_level: false
-  # the script for tokenizing the output into char-level, for inference only, by default: ./seq2seq/tools/tokenizeChinese.py
-  tokenize_script: ./seq2seq/tools/tokenizeChinese.py
-  # the script for computing the multibleu score, for inference only, by default: ./seq2seq/tools/multi-bleu.perl
-  multibleu_script: ./seq2seq/tools/multi-bleu.perl
 
 # testdata for inference
 # list of testsets
