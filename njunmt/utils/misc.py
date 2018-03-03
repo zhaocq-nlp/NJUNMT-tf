@@ -116,32 +116,6 @@ def create_ps_worker(ps_hosts, worker_hosts, task_index, ps):
     return server, cluster, num_workers, gpu_options
 
 
-def optimistic_restore(session, save_file):
-    """ Restores checkpoint.
-
-    Args:
-        session: `tf.Session`.
-        save_file: Checkpoint file name.
-    """
-    # reader = tf.train.NewCheckpointReader(save_file)
-    # saved_shapes = reader.get_variable_to_shape_map()
-    # var_names = sorted([(var.name, var.name.split(':')[0]) for var in tf.global_variables()
-    #                     if var.name.split(':')[0] in saved_shapes])
-    # restore_vars = []
-    # name2var = dict(zip(map(lambda x: x.name.split(':')[0], tf.global_variables()), tf.global_variables()))
-    # with tf.variable_scope('', reuse=True):
-    #     for var_name, saved_var_name in var_names:
-    #         curr_var = name2var[saved_var_name]
-    #         # print saved_var_name, type(curr_var)
-    #         var_shape = curr_var.get_shape().as_list()
-    #         if var_shape == saved_shapes[saved_var_name]:
-    #             restore_vars.append(curr_var)
-    # saver = tf.train.Saver(restore_vars)
-    # saver.restore(session, save_file)
-    saver = tf.train.Saver()
-    saver.restore(session, save_file)
-
-
 def dump_model_analysis(model_dir):
     """ Dumps detailed model size.
 
@@ -150,10 +124,15 @@ def dump_model_analysis(model_dir):
     """
     # Dump to file on the chief worker
     filename = os.path.join(model_dir, GlobalNames.MODEL_ANALYSIS_FILENAME)
-    opts = tf.contrib.tfprof.model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS
-    opts['dump_to_file'] = os.path.abspath(filename)
-    tf.contrib.tfprof.model_analyzer.print_model_analysis(
-        tf.get_default_graph(), tfprof_options=opts)
+    profile_opt_builder = tf.profiler.ProfileOptionBuilder
+    opts = profile_opt_builder.trainable_variables_parameter()
+    opts["output"] = "file:outfile={}".format(filename)
+    param_stats = tf.profiler.profile(tf.get_default_graph(), options=opts)
+    # following APIs are deprecated
+    # opts = tf.contrib.tfprof.model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS
+    # opts['dump_to_file'] = os.path.abspath(filename)
+    # tf.contrib.tfprof.model_analyzer.print_model_analysis(
+    #     tf.get_default_graph(), tfprof_options=opts)
     # Print the model analysis
     with gfile.GFile(filename) as file:
         tf.logging.info(file.read())
@@ -285,6 +264,7 @@ def shuffle_data(from_binding, to_binding):
         from_=",".join(from_binding),
         to_=",".join(to_binding))
     os.system(cmd)
+
 
 def get_labels_file(labels_file):
     """ Gets the list of labels file.

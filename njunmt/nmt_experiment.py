@@ -31,7 +31,6 @@ from njunmt.utils.configurable import print_params
 from njunmt.utils.configurable import update_eval_metric
 from njunmt.utils.configurable import update_infer_params
 from njunmt.utils.metrics import multi_bleu_score_from_file
-from njunmt.utils.misc import optimistic_restore
 
 
 @six.add_metaclass(ABCMeta)
@@ -257,7 +256,8 @@ class InferExperiment(Experiment):
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
         if checkpoint_path:
             tf.logging.info("reloading models...")
-            optimistic_restore(sess, checkpoint_path)
+            saver = tf.train.Saver()
+            saver.restore(sess, checkpoint_path)
         else:
             raise OSError("File NOT Found. Fail to find checkpoint file from: {}"
                           .format(self._model_configs["model_dir"]))
@@ -376,7 +376,8 @@ class EvalExperiment(Experiment):
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
         if checkpoint_path:
             tf.logging.info("reloading models...")
-            optimistic_restore(sess, checkpoint_path)
+            saver = tf.train.Saver()
+            saver.restore(sess, checkpoint_path)
         else:
             raise OSError("File NOT Found. Fail to load checkpoint file from: {}"
                           .format(self._model_configs["model_dir"]))
