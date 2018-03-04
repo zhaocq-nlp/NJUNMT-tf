@@ -24,7 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
 
 from njunmt.utils.global_names import GlobalNames
-from njunmt.utils.misc import get_labels_file
+from njunmt.utils.misc import get_labels_files
 
 
 class Dataset(object):
@@ -53,9 +53,9 @@ class Dataset(object):
         self._train_labels_file = train_labels_file
         self._eval_features_file = eval_features_file
         if isinstance(eval_labels_file, list):
-            self._eval_labels_file = [get_labels_file(f) for f in eval_labels_file]
+            self._eval_labels_file = [get_labels_files(f) for f in eval_labels_file]
         elif isinstance(eval_labels_file, six.string_types):
-            self._eval_labels_file = get_labels_file(eval_labels_file)
+            self._eval_labels_file = get_labels_files(eval_labels_file)
         else:
             self._eval_labels_file = None
         self._input_fields = Dataset._make_input_fields()

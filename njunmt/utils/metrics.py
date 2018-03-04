@@ -22,7 +22,7 @@ import tensorflow as tf
 
 from njunmt.utils.bleu import corpus_bleu
 from njunmt.utils.misc import open_file
-from njunmt.utils.misc import get_labels_file
+from njunmt.utils.misc import get_labels_files
 from njunmt.utils.misc import deprecated
 
 
@@ -88,7 +88,7 @@ def multi_bleu_score_from_file(hypothesis_file, references_files):
     with open_file(hypothesis_file) as fp:
         hypothesis = fp.readlines()
     references = []
-    for ref_file in get_labels_file(references_files):
+    for ref_file in get_labels_files(references_files):
         with open_file(ref_file) as fp:
             references.append(fp.readlines())
     references = list(map(list, zip(*references)))

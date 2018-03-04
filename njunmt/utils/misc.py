@@ -266,7 +266,7 @@ def shuffle_data(from_binding, to_binding):
     os.system(cmd)
 
 
-def get_labels_file(labels_file):
+def get_labels_files(labels_file):
     """ Gets the list of labels file.
 
     Args:
