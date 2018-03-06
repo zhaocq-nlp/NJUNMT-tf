@@ -35,8 +35,8 @@ from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn
 from njunmt.utils.configurable import update_infer_params
 from njunmt.utils.expert_utils import StepTimer
-from njunmt.utils.global_names import GlobalNames
-from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.constants import Constants
+from njunmt.utils.constants import ModeKeys
 from njunmt.utils.metrics import multi_bleu_score
 from njunmt.utils.misc import get_dict_from_collection
 from njunmt.utils.misc import open_file
@@ -203,10 +203,10 @@ class LossMetricSpec(TextMetricSpec):
         self._half_lr = False
         if self._model_configs["optimizer_params"]["optimizer.lr_decay"]["decay_type"] == "loss_decay":
             self._half_lr = True
-            lr_tensor_dict = get_dict_from_collection(GlobalNames.LEARNING_RATE_VAR_NAME)
-            self._learning_rate = lr_tensor_dict[GlobalNames.LEARNING_RATE_VAR_NAME]
+            lr_tensor_dict = get_dict_from_collection(Constants.LEARNING_RATE_VAR_NAME)
+            self._learning_rate = lr_tensor_dict[Constants.LEARNING_RATE_VAR_NAME]
             self._max_patience = self._model_configs["optimizer_params"]["optimizer.lr_decay"]["patience"]
-            div_factor = lr_tensor_dict[GlobalNames.LR_ANNEAL_DIV_FACTOR_NAME]
+            div_factor = lr_tensor_dict[Constants.LR_ANNEAL_DIV_FACTOR_NAME]
             self._half_lr_op = div_factor.assign(div_factor * 2.)
             self._patience = 0
             self._min_loss = 10000.
@@ -304,15 +304,15 @@ class BleuMetricSpec(TextMetricSpec):
     def _read_ckpt_bleulog(self):
         """Read the best BLEU scores and the name of corresponding
         checkpoint archives from log file."""
-        if gfile.Exists(GlobalNames.TOP_BLEU_CKPTLOG_FILENAME):
-            with gfile.GFile(GlobalNames.TOP_BLEU_CKPTLOG_FILENAME, "r") as fp:
+        if gfile.Exists(Constants.TOP_BLEU_CKPTLOG_FILENAME):
+            with gfile.GFile(Constants.TOP_BLEU_CKPTLOG_FILENAME, "r") as fp:
                 self._best_checkpoint_bleus = [float(x) for x in fp.readline().strip().split(",")]
                 self._best_checkpoint_names = [x for x in fp.readline().strip().split(",")]
 
     def _write_ckpt_bleulog(self):
         """Write the best BLEU scores and the name of corresponding
         checkpoint archives to log file."""
-        with gfile.GFile(GlobalNames.TOP_BLEU_CKPTLOG_FILENAME, "w") as fw:
+        with gfile.GFile(Constants.TOP_BLEU_CKPTLOG_FILENAME, "w") as fw:
             fw.write(','.join([str(x) for x in self._best_checkpoint_bleus]) + "\n")
             fw.write(','.join([x for x in self._best_checkpoint_names]) + "\n")
 
@@ -336,10 +336,10 @@ class BleuMetricSpec(TextMetricSpec):
                                   mode=ModeKeys.INFER, dataset=self._dataset,
                                   name=self._model_name, reuse=True, verbose=False)
         self._predict_ops = estimator_spec.predictions
-        tmp_trans_dir = os.path.join(self._model_configs["model_dir"], GlobalNames.TMP_TRANS_DIRNAME)
+        tmp_trans_dir = os.path.join(self._model_configs["model_dir"], Constants.TMP_TRANS_DIRNAME)
         if not gfile.Exists(tmp_trans_dir):
             gfile.MakeDirs(tmp_trans_dir)
-        self._tmp_trans_file_prefix = os.path.join(tmp_trans_dir, GlobalNames.TMP_TRANS_FILENAME_PREFIX)
+        self._tmp_trans_file_prefix = os.path.join(tmp_trans_dir, Constants.TMP_TRANS_FILENAME_PREFIX)
         self._read_ckpt_bleulog()
         # load references
         self._references = []
@@ -361,12 +361,13 @@ class BleuMetricSpec(TextMetricSpec):
         """
         start_time = time.time()
         output_prediction_file = self._tmp_trans_file_prefix + str(global_step)
-        inputs, hypothesis = infer(
+        sources, hypothesis = infer(
             sess=run_context.session,
             prediction_op=self._predict_ops,
             feeding_data=self._eval_feeding_data,
             output=output_prediction_file,
             vocab_target=self._dataset.vocab_target,
+            vocab_source=self._dataset.vocab_source,
             delimiter=self._delimiter,
             output_attention=False,
             tokenize_output=self._char_level,
@@ -375,7 +376,7 @@ class BleuMetricSpec(TextMetricSpec):
         random_start = random.randint(0, len(hypothesis) - 5)
         for idx in range(5):
             tf.logging.info("Sample%d Source: %s" % (idx, self._sources[idx + random_start].strip()))
-            encoded_input = inputs[idx + random_start].strip().split()
+            encoded_input = sources[idx + random_start].strip().split()
             encoded_input = [x + "(UNK)" if self._dataset.vocab_source[x] == self._dataset.vocab_source.unk_id
                              else x for x in encoded_input]
             tf.logging.info("Sample%d Encoded Input: %s" % (idx, " ".join(encoded_input)))
@@ -417,19 +418,19 @@ class BleuMetricSpec(TextMetricSpec):
             run_context.request_stop()
         # saving checkpoints if eval_steps and save_checkpoint_steps mismatch
         if not gfile.Exists("{}-{}.meta".format(
-                os.path.join(self._checkpoint_dir, GlobalNames.MODEL_CKPT_FILENAME), global_step)):
+                os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME), global_step)):
             saver = saver_lib._get_saver_or_default()
             saver.save(run_context.session,
-                       os.path.join(self._checkpoint_dir, GlobalNames.MODEL_CKPT_FILENAME),
+                       os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME),
                        global_step=global_step)
         if len(self._best_checkpoint_names) == 0 or bleu > self._best_checkpoint_bleus[0]:
-            tarname = "{}{}.tar.gz".format(GlobalNames.CKPT_TGZ_FILENAME_PREFIX, global_step)
+            tarname = "{}{}.tar.gz".format(Constants.CKPT_TGZ_FILENAME_PREFIX, global_step)
             os.system("tar -zcvf {tarname} {checkpoint} {model_config} {model_analysis} {ckptdir}/*{global_step}*"
                 .format(
                 tarname=tarname,
                 checkpoint=os.path.join(self._checkpoint_dir, "checkpoint"),
-                model_config=os.path.join(self._checkpoint_dir, GlobalNames.MODEL_CONFIG_YAML_FILENAME),
-                model_analysis=os.path.join(self._checkpoint_dir, GlobalNames.MODEL_ANALYSIS_FILENAME),
+                model_config=os.path.join(self._checkpoint_dir, Constants.MODEL_CONFIG_YAML_FILENAME),
+                model_analysis=os.path.join(self._checkpoint_dir, Constants.MODEL_ANALYSIS_FILENAME),
                 ckptdir=self._checkpoint_dir,
                 global_step=global_step))
             self._best_checkpoint_bleus.append(bleu)

@@ -26,7 +26,7 @@ import yaml
 import tensorflow as tf
 from tensorflow import gfile
 
-from njunmt.utils.global_names import GlobalNames, ModeKeys
+from njunmt.utils.constants import Constants, ModeKeys
 
 
 class abstractstaticmethod(staticmethod):  # pylint: disable=C0111,C0103
@@ -457,7 +457,7 @@ class ModelConfigs:
             model_config: A dict.
             output_dir: A string, the output directory.
         """
-        model_config_filename = os.path.join(output_dir, GlobalNames.MODEL_CONFIG_YAML_FILENAME)
+        model_config_filename = os.path.join(output_dir, Constants.MODEL_CONFIG_YAML_FILENAME)
         if not gfile.Exists(output_dir):
             gfile.MakeDirs(output_dir)
         with gfile.GFile(model_config_filename, "w") as file:
@@ -472,7 +472,7 @@ class ModelConfigs:
 
         Returns: A dict.
         """
-        model_config_filename = os.path.join(model_dir, GlobalNames.MODEL_CONFIG_YAML_FILENAME)
+        model_config_filename = os.path.join(model_dir, Constants.MODEL_CONFIG_YAML_FILENAME)
         if not gfile.Exists(model_config_filename):
             raise OSError("Fail to find model config file: %s" % model_config_filename)
         with gfile.GFile(model_config_filename, "r") as file:

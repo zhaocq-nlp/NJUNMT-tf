@@ -19,8 +19,8 @@ from __future__ import print_function
 import tensorflow as tf
 import copy
 
-from njunmt.utils.global_names import ModeKeys
-from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.constants import ModeKeys
+from njunmt.utils.constants import Constants
 from njunmt.models.sequence_to_sequence import SequenceToSequence
 
 
@@ -102,10 +102,10 @@ class Transformer(SequenceToSequence):
             with tf.control_dependencies([tf.assign(max_nonpadding_var, max_nonpadding)]):
                 small_batch_multilier = target_nonpadding_tokens / max_nonpadding
             # add to collection
-            tf.add_to_collection(GlobalNames.DISPLAY_KEY_COLLECTION_NAME, "training_stats/small_batch_multilier")
-            tf.add_to_collection(GlobalNames.DISPLAY_VALUE_COLLECTION_NAME, small_batch_multilier)
-            tf.add_to_collection(GlobalNames.DISPLAY_KEY_COLLECTION_NAME, "training_stats/base_loss")
-            tf.add_to_collection(GlobalNames.DISPLAY_VALUE_COLLECTION_NAME, loss)
+            tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, "training_stats/small_batch_multilier")
+            tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, small_batch_multilier)
+            tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, "training_stats/base_loss")
+            tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, loss)
             loss *= small_batch_multilier
         return loss
 

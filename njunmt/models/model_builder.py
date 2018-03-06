@@ -23,8 +23,8 @@ import njunmt
 from njunmt.models import SequenceToSequence
 from njunmt.models import EnsembleModel
 from njunmt.utils.configurable import ModelConfigs
-from njunmt.utils.global_names import GlobalNames
-from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.constants import Constants
+from njunmt.utils.constants import ModeKeys
 from njunmt.training.optimize import optimize
 from njunmt.training.hooks import build_hooks
 
@@ -154,8 +154,8 @@ def model_fn(
     if mode == ModeKeys.TRAIN:
         loss = model_output
         # Register the training loss in a collection so that hooks can easily fetch them
-        tf.add_to_collection(GlobalNames.DISPLAY_KEY_COLLECTION_NAME, GlobalNames.TRAIN_LOSS_KEY_NAME)
-        tf.add_to_collection(GlobalNames.DISPLAY_VALUE_COLLECTION_NAME, loss)
+        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, Constants.TRAIN_LOSS_KEY_NAME)
+        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, loss)
         # build train op
         train_op = optimize(loss, model_configs["optimizer_params"])
         # build training hooks
@@ -219,7 +219,7 @@ def model_fn_ensemble(
             if model_name is None:
                 model_name = _inspect_varname_prefix(var_name)
             var = tf.contrib.framework.load_variable(model_dir, var_name)
-            with tf.variable_scope(GlobalNames.ENSEMBLE_VARNAME_PREFIX + str(index)):
+            with tf.variable_scope(Constants.ENSEMBLE_VARNAME_PREFIX + str(index)):
                 var = tf.get_variable(
                     name=var_name, shape=var.shape, dtype=tf.float32,
                     initializer=tf.constant_initializer(var))

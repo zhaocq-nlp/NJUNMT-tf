@@ -24,7 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 
-from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.constants import Constants
 from njunmt.utils.misc import dump_model_analysis
 from njunmt.utils.expert_utils import StepTimer
 from njunmt.utils.summary_writer import SummaryWriter
@@ -113,7 +113,7 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
             saver = saver_lib._get_saver_or_default()  # pylint: disable=protected-access
         self._saver = saver
         self._checkpoint_dir = checkpoint_dir
-        self._save_path = os.path.join(checkpoint_dir, GlobalNames.MODEL_CKPT_FILENAME)
+        self._save_path = os.path.join(checkpoint_dir, Constants.MODEL_CKPT_FILENAME)
         # save every n steps
         self._save_checkpoint_steps = save_checkpoint_steps
         # variable for session.run
@@ -230,8 +230,8 @@ class DisplayHook(tf.train.SessionRunHook):
 
         # display values
         global_step = training_util.get_global_step()
-        display_keys = ops.get_collection(GlobalNames.DISPLAY_KEY_COLLECTION_NAME)
-        display_values = ops.get_collection(GlobalNames.DISPLAY_VALUE_COLLECTION_NAME)
+        display_keys = ops.get_collection(Constants.DISPLAY_KEY_COLLECTION_NAME)
+        display_values = ops.get_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME)
         self._display_args = dict(zip(display_keys, display_values))
         self._display_args["global_step"] = global_step
         # timer & summary writer
@@ -270,7 +270,7 @@ class DisplayHook(tf.train.SessionRunHook):
         global_step = run_values.results.pop("global_step")
         if self._timer.should_trigger_for_step(global_step):
 
-            training_loss = run_values.results[GlobalNames.TRAIN_LOSS_KEY_NAME]
+            training_loss = run_values.results[Constants.TRAIN_LOSS_KEY_NAME]
             elapsed_steps, _ = self._timer.update_last_triggered_step(global_step)
             session_run_time = self._timer.get_session_run_time()
             steps_per_sec = elapsed_steps * 1. / session_run_time

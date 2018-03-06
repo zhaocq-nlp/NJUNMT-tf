@@ -24,7 +24,7 @@ from tensorflow import gfile
 from njunmt.inference.attention import process_attention_output
 from njunmt.inference.attention import pack_batch_attention_dict
 from njunmt.inference.attention import dump_attentions
-from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.constants import Constants
 from njunmt.utils.misc import padding_batch_data
 from njunmt.tools.tokenizeChinese import to_chinese_char
 
@@ -77,10 +77,10 @@ def evaluate_sentences(
         re.split(r"\s*", snt.strip()), n_words_src) for snt in sources]
     targets = [vocab_target.convert_to_idlist(
         re.split(r"\s*", snt.strip()), n_words_trg) for snt in targets]
-    ph_x = input_fields[GlobalNames.PH_FEATURE_IDS_NAME]
-    ph_x_len = input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]
-    ph_y = input_fields[GlobalNames.PH_LABEL_IDS_NAME]
-    ph_y_len = input_fields[GlobalNames.PH_LABEL_LENGTH_NAME]
+    ph_x = input_fields[Constants.FEATURE_IDS_NAME]
+    ph_x_len = input_fields[Constants.FEATURE_LENGTH_NAME]
+    ph_y = input_fields[Constants.LABEL_IDS_NAME]
+    ph_y_len = input_fields[Constants.LABEL_LENGTH_NAME]
     x, len_x = padding_batch_data(sources, vocab_source.eos_id)
     y, len_y = padding_batch_data(targets, vocab_target.eos_id)
     feed_dict = {ph_x: x, ph_x_len: len_x,
@@ -157,7 +157,6 @@ def _infer(
         sess,
         feed_dict,
         prediction_op,
-        batch_size,
         top_k=1,
         output_attention=False):
     """ Infers a batch of samples with beam search.
@@ -166,10 +165,6 @@ def _infer(
         sess: `tf.Session`
         feed_dict: A dictionary of feeding data.
         prediction_op: Tensorflow operation for inference.
-        batch_size: An integer, the number of data samples.
-        alpha: A scalar number, length penalty rate. If not provided
-          or < 0, simply average each beam by length of predicted
-          sequence.
         top_k: An integer, number of predicted sequences will be
           returned.
         output_attention: Whether to output attention.
@@ -182,6 +177,7 @@ def _infer(
     """
     brief_pred_op = dict()
     brief_pred_op["hypothesis"] = prediction_op["sorted_hypothesis"]
+    brief_pred_op["source"] = prediction_op["source"]
     if output_attention:
         brief_pred_op["sorted_argidx"] = prediction_op["sorted_argidx"]
         brief_pred_op["attentions"] = prediction_op["attentions"]
@@ -189,6 +185,7 @@ def _infer(
 
     predict_out = sess.run(brief_pred_op, feed_dict=feed_dict)
     num_samples = predict_out["hypothesis"].shape[0]
+    batch_size = predict_out["source"].shape[0]
     beam_size = num_samples // batch_size
     # [batch_, beam_]
     batch_beam_pos = numpy.tile(numpy.arange(batch_size) * beam_size, [beam_size, 1]).transpose()
@@ -196,8 +193,8 @@ def _infer(
     if output_attention:
         argidx = predict_out.pop("sorted_argidx")[batch_beam_pos]
         attentions = process_attention_output(predict_out, argidx)
-        return predict_out["hypothesis"][batch_beam_pos, :], attentions
-    return predict_out["hypothesis"][batch_beam_pos, :], None
+        return predict_out["source"], predict_out["hypothesis"][batch_beam_pos, :], attentions
+    return predict_out["source"], predict_out["hypothesis"][batch_beam_pos, :], None
 
 
 def infer_sentences(
@@ -232,11 +229,11 @@ def infer_sentences(
     """
     sources = [vocab_source.convert_to_idlist(
         re.split(r"\s*", snt.strip()), n_words_src) for snt in sources]
-    ph_x = input_fields[GlobalNames.PH_FEATURE_IDS_NAME]
-    ph_x_len = input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]
+    ph_x = input_fields[Constants.FEATURE_IDS_NAME]
+    ph_x_len = input_fields[Constants.FEATURE_LENGTH_NAME]
     x, len_x = padding_batch_data(sources, vocab_source.eos_id)
     feed_dict = {ph_x: x, ph_x_len: len_x}
-    return _infer(sess, feed_dict, prediction_op, len(sources), top_k)
+    return _infer(sess, feed_dict, prediction_op, top_k)
 
 
 def infer(
@@ -244,8 +241,8 @@ def infer(
         prediction_op,
         feeding_data,
         output,
+        vocab_source,
         vocab_target,
-        vocab_source=None,
         delimiter=" ",
         output_attention=False,
         tokenize_output=False,
@@ -258,8 +255,8 @@ def infer(
         feeding_data: An iterable instance that each element
           is a packed feeding dictionary for `sess`.
         output: Output file name, `str`.
+        vocab_source: A `Vocab` instance for source side feature map.
         vocab_target: A `Vocab` instance for target side feature map.
-        vocab_source: A `Vocab` instance for source side feature map. For highlighting UNK.
         alpha: A scalar number, length penalty rate. If not provided
           or < 0, simply average each beam by length of predicted
           sequence.
@@ -276,18 +273,16 @@ def infer(
     hypothesis = []
     sources = []
     cnt = 0
-    for x_str, feeding_batch in feeding_data:
-        prediction, att = _infer(sess, feeding_batch, prediction_op,
-                                 len(x_str), top_k=1,
-                                 output_attention=output_attention)
+    for feeding_batch in feeding_data:
+        source, prediction, att = _infer(sess, feeding_batch, prediction_op,
+                                         top_k=1, output_attention=output_attention)
+        source_tokens = [vocab_source.convert_to_wordlist(x, bpe_decoding=False)
+                         for x in source]
+        x_str = [delimiter.join(x) for x in source_tokens]
         sources.extend(x_str)
         hypothesis.extend([delimiter.join(vocab_target.convert_to_wordlist(prediction[sample_idx]))
-                         for sample_idx in range(prediction.shape[0])])
+                           for sample_idx in range(prediction.shape[0])])
         if output_attention and att is not None:
-            source_tokens = [x.strip().split() for x in x_str]
-            if vocab_source is not None:
-                source_tokens = [vocab_source.decorate_with_unk(x)
-                                 for x in source_tokens]
             candidate_tokens = [vocab_target.convert_to_wordlist(
                 prediction[idx, :], bpe_decoding=False, reverse_seq=False)
                                 for idx in range(len(x_str))]

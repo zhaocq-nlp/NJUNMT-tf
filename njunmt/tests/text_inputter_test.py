@@ -7,7 +7,7 @@ from njunmt.data.vocab import Vocab
 from njunmt.tests.data_iterator import EvalTextIterator
 from njunmt.tests.data_iterator import TestTextIterator
 from njunmt.tests.data_iterator import TrainTextIterator
-from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.constants import Constants
 
 vocab_src_file = "/Users/zhaocq/Documents/gitdownload/struct2struct/testdata/vocab.zh"
 vocab_trg_file = "/Users/zhaocq/Documents/gitdownload/struct2struct/testdata/vocab.en"
@@ -93,10 +93,10 @@ class TextInputterTest(object):
             x_len = a[0][1]
             y = a[1][0]
             y_len = a[1][1]
-            x_new = b[1][input_fields[GlobalNames.PH_FEATURE_IDS_NAME]]
-            x_len_new = b[1][input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]]
-            y_new = b[1][input_fields[GlobalNames.PH_LABEL_IDS_NAME]]
-            y_len_new = b[1][input_fields[GlobalNames.PH_LABEL_LENGTH_NAME]]
+            x_new = b[1][input_fields[Constants.FEATURE_IDS_NAME]]
+            x_len_new = b[1][input_fields[Constants.FEATURE_LENGTH_NAME]]
+            y_new = b[1][input_fields[Constants.LABEL_IDS_NAME]]
+            y_len_new = b[1][input_fields[Constants.LABEL_LENGTH_NAME]]
             assert x.all() == x_new.all()
             assert x_len.all() == x_len_new.all()
             assert y.all() == y_new.all()
@@ -137,10 +137,10 @@ class TextInputterTest(object):
             x_len2 = b[0][1]
             y2 = b[1][0]
             y_len2 = b[1][1]
-            x_new = c[1][input_fields[GlobalNames.PH_FEATURE_IDS_NAME]]
-            x_len_new = c[1][input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]]
-            y_new = c[1][input_fields[GlobalNames.PH_LABEL_IDS_NAME]]
-            y_len_new = c[1][input_fields[GlobalNames.PH_LABEL_LENGTH_NAME]]
+            x_new = c[1][input_fields[Constants.FEATURE_IDS_NAME]]
+            x_len_new = c[1][input_fields[Constants.FEATURE_LENGTH_NAME]]
+            y_new = c[1][input_fields[Constants.LABEL_IDS_NAME]]
+            y_len_new = c[1][input_fields[Constants.LABEL_LENGTH_NAME]]
             assert x1.all() == x_new.all() == x2.all()
             assert x_len1.all() == x_len_new.all() == x_len2.all()
             assert y1.all() == y_new.all() == y2.all()
@@ -169,8 +169,8 @@ class TextInputterTest(object):
             x = a[1][0]
             x_len = a[1][1]
             x_str_new = b[0]
-            x_new = b[2][input_fields[GlobalNames.PH_FEATURE_IDS_NAME]]
-            x_len_new = b[2][input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]]
+            x_new = b[2][input_fields[Constants.FEATURE_IDS_NAME]]
+            x_len_new = b[2][input_fields[Constants.FEATURE_LENGTH_NAME]]
             assert x.all() == x_new.all()
             assert x_len.all() == x_len_new.all()
             assert numpy.all([str1 == str2 for str1, str2 in zip(x_str, x_str_new)])

@@ -22,8 +22,8 @@ import tensorflow as tf
 from njunmt.utils.lr_decay import create_learning_rate_decay_fn
 from njunmt.utils.misc import add_dict_to_collection
 from njunmt.utils.configurable import Configurable
-from njunmt.utils.global_names import ModeKeys
-from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.constants import ModeKeys
+from njunmt.utils.constants import Constants
 
 
 def optimize(loss, opt_params, colocate_gradients_with_ops=False):
@@ -110,7 +110,7 @@ class OptimizerWrapper(Configurable):
         Returns: The train_op.
         """
         learning_rate = tf.get_variable(
-            GlobalNames.LEARNING_RATE_VAR_NAME,
+            Constants.LEARNING_RATE_VAR_NAME,
             shape=(), dtype=tf.float32,
             initializer=tf.constant_initializer(
                 value=self.params["optimizer.learning_rate"],
@@ -127,10 +127,10 @@ class OptimizerWrapper(Configurable):
         if decay_fn:  # apply learning rate decay
             learning_rate, other_tensor_dict = decay_fn(learning_rate, global_step_tensor)
         # add to collections
-        other_tensor_dict[GlobalNames.LEARNING_RATE_VAR_NAME] = learning_rate
-        add_dict_to_collection(GlobalNames.LEARNING_RATE_VAR_NAME, other_tensor_dict)
-        tf.add_to_collection(GlobalNames.DISPLAY_KEY_COLLECTION_NAME, "training_stats/learning_rate")
-        tf.add_to_collection(GlobalNames.DISPLAY_VALUE_COLLECTION_NAME, learning_rate)
+        other_tensor_dict[Constants.LEARNING_RATE_VAR_NAME] = learning_rate
+        add_dict_to_collection(Constants.LEARNING_RATE_VAR_NAME, other_tensor_dict)
+        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, "training_stats/learning_rate")
+        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, learning_rate)
         # create optimizer
         optimizer = _get_optimizer(name, learning_rate=learning_rate,
                                    **self.params["optimizer.params"])

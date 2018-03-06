@@ -21,7 +21,7 @@ import inspect
 import tensorflow as tf
 from tensorflow.python.training import learning_rate_decay
 
-from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.constants import Constants
 
 # import all decay functions
 DECAY_FNS = [
@@ -62,7 +62,7 @@ def loss_decay(learning_rate, global_step, decay_steps, decay_rate,
         raise ValueError("\"patience\" should be provided when using loss_decay")
     with tf.name_scope(name, "LossDecay", [learning_rate]):
         div_factor = tf.get_variable(
-            name=GlobalNames.LR_ANNEAL_DIV_FACTOR_NAME,
+            name=Constants.LR_ANNEAL_DIV_FACTOR_NAME,
             shape=(), dtype=tf.float32,
             initializer=tf.constant_initializer(
                 value=1., dtype=tf.float32),
@@ -70,7 +70,7 @@ def loss_decay(learning_rate, global_step, decay_steps, decay_rate,
         learning_rate = tf.convert_to_tensor(learning_rate, name=learning_rate)
 
         return (tf.div(learning_rate, div_factor),
-                {GlobalNames.LR_ANNEAL_DIV_FACTOR_NAME: div_factor})
+                {Constants.LR_ANNEAL_DIV_FACTOR_NAME: div_factor})
 
 
 def noam_decay(learning_rate, global_step, decay_steps, decay_rate,

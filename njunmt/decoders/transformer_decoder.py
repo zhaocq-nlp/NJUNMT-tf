@@ -20,7 +20,7 @@ import tensorflow as tf
 from tensorflow.python.util import nest
 from collections import namedtuple
 
-from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.constants import ModeKeys
 from njunmt.decoders.decoder import dynamic_decode
 from njunmt.decoders.decoder import initialize_cache
 from njunmt.decoders.decoder import Decoder

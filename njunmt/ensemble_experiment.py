@@ -108,6 +108,7 @@ class EnsembleExperiment(Experiment):
                   prediction_op=predict_op,
                   feeding_data=feeding_data,
                   output=param["output_file"],
+                  vocab_source=self._vocab_source,
                   vocab_target=self._vocab_target,
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=False,

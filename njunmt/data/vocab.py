@@ -159,6 +159,8 @@ class Vocab(object):
         """
         if self._bpe:
             words = self._bpe.encode(words)
+        if not isinstance(words, list):
+            words = words.split()
         ss = [self.vocab_dict[w] if w in self.vocab_dict else self.unk_id
               for w in words]
         if n_words > 0:

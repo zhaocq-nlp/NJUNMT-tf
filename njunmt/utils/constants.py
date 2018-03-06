@@ -22,7 +22,11 @@ import tensorflow as tf
 ModeKeys = tf.contrib.learn.ModeKeys
 
 
-class GlobalNames:
+class Constants:
+
+    def __init__(self):
+        raise OSError("class Constants can not be instantiated.")
+
     """ Class to access predefined strings. """
     # for BLEU metric temp translation output directionary
     TMP_TRANS_DIRNAME = "translations"
@@ -59,14 +63,11 @@ class GlobalNames:
     DISPLAY_KEY_COLLECTION_NAME = "display_tensors_key"
     DISPLAY_VALUE_COLLECTION_NAME = "display_tensors_value"
 
-    # placeholder prefix
-    PH_PREFIX = "ph_"
-
     # default placeholders
-    PH_FEATURE_IDS_NAME = PH_PREFIX + "feature_ids"
-    PH_FEATURE_LENGTH_NAME = PH_PREFIX + "feature_length"
-    PH_LABEL_IDS_NAME = PH_PREFIX + "label_ids"
-    PH_LABEL_LENGTH_NAME = PH_PREFIX + "label_length"
+    FEATURE_IDS_NAME = "feature_ids"
+    FEATURE_LENGTH_NAME = "feature_length"
+    LABEL_IDS_NAME = "label_ids"
+    LABEL_LENGTH_NAME = "label_length"
 
     # verbose prefix for training hooks
     HOOK_VERBOSE_PREFIX = " ---hook order: "

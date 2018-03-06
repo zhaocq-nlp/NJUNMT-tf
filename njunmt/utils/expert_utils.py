@@ -20,7 +20,7 @@ import time
 from collections import namedtuple
 import tensorflow as tf
 
-from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.constants import ModeKeys
 
 
 class StepTimer(object):

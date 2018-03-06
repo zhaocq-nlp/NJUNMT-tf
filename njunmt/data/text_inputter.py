@@ -23,10 +23,35 @@ import six
 import tensorflow as tf
 from tensorflow import gfile
 
-from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.constants import Constants
 from njunmt.utils.misc import open_file, close_file
 from njunmt.utils.misc import shuffle_data
 from njunmt.utils.misc import padding_batch_data
+
+
+def read_line_with_filter(
+        fp,
+        filter_length=None,
+        preprocessing_fn=None):
+    """ Reads one line from `fp`, filters by `filter_length` and
+      does preprocessing if provided.
+
+    Args:
+        fp: A file identifier.
+        filter_length: An integer, the maximum length of one line.
+        preprocessing_fn: A callable function.
+
+    Returns: A list.
+    """
+    line = fp.readline()
+    if line == "":
+        return ""
+    tokens = line.strip()
+    if preprocessing_fn:
+        tokens = preprocessing_fn(tokens)
+    if filter_length and len(tokens) > filter_length:
+        return None
+    return tokens
 
 
 @six.add_metaclass(ABCMeta)
@@ -65,7 +90,8 @@ class TextLineInputter(TextInputter):
     def __init__(self,
                  dataset,
                  data_field_name,
-                 batch_size):
+                 batch_size,
+                 maximum_length=None):
         """ Initializes the parameters for this inputter.
 
         Args:
@@ -74,6 +100,7 @@ class TextLineInputter(TextInputter):
               access to a data file.
             batch_size: An integer value indicating the number of
               sentences passed into one step. Sentences will be padded by EOS.
+            maximum_length: The maximum length.
 
         Raises:
             ValueError: if `batch_size` is None, or if `dataset` has no
@@ -91,21 +118,20 @@ class TextLineInputter(TextInputter):
             raise ValueError("error type with for attribute \"{}\" of dataset, "
                              "which should be str or list".format(data_field_name))
         if "features" in data_field_name:
-            self._vocab = dataset.vocab_source
+            self._preprocessing_fn = lambda x: dataset.vocab_source.convert_to_idlist(x)
+            self._padding = dataset.vocab_source.eos_id
         else:
-            self._vocab = dataset.vocab_target
+            self._preprocessing_fn = lambda x: dataset.vocab_target.convert_to_idlist(x)
+            self._padding = dataset.vocab_target.eos_id
 
     def _make_feeding_data_from(self,
                                 filename,
-                                maximum_line_length=None,
-                                maximum_encoded_length=None):
+                                maximum_length=None):
         """ Processes the data file and return an iterable instance for loop.
 
         Args:
             filename: A specific data file.
-            maximum_line_length: The maximum sequence length. If provided,
-              sentences exceeding this value will be ignore.
-            maximum_encoded_length: The maximum length of symbols (especially
+            maximum_length: The maximum length of symbols (especially
               after BPE is applied). If provided symbols of one sentence exceeding
               this value will be ignore.
 
@@ -113,40 +139,30 @@ class TextLineInputter(TextInputter):
                    for `tf.Session().run` according to the `filename`.
         """
         features = open_file(filename, encoding="utf-8")
-        str_buf = []
         ss_buf = []
-        for ss in features:
-            if maximum_line_length and len(ss.strip().split()) > maximum_line_length:
-                continue
-            encoded_ss = self._vocab.convert_to_idlist(ss.strip().split())
-            if maximum_encoded_length and len(encoded_ss) - 1 > maximum_encoded_length:
-                continue
-            bpe_ss = self._vocab.bpe_encode(ss.strip())
-            str_buf.append(bpe_ss)
+        encoded_ss = read_line_with_filter(features, maximum_length, self._preprocessing_fn)
+        while encoded_ss != "":
             ss_buf.append(encoded_ss)
+            encoded_ss = read_line_with_filter(features, maximum_length, self._preprocessing_fn)
         close_file(features)
         data = []
         batch_data_idx = 0
         while batch_data_idx < len(ss_buf):
             x, len_x = padding_batch_data(
                 ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                self._vocab.eos_id)
-            str_x = str_buf[batch_data_idx: batch_data_idx + self._batch_size]
+                self._padding)
             batch_data_idx += self._batch_size
-            data.append((
-                str_x,
-                {self.input_fields[GlobalNames.PH_FEATURE_IDS_NAME]: x,
-                 self.input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]: len_x}))
+            data.append({
+                self.input_fields[Constants.FEATURE_IDS_NAME]: x,
+                self.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x})
         return data
 
-    def make_feeding_data(self, maximum_line_length=None, maximum_encoded_length=None):
+    def make_feeding_data(self, maximum_length=None):
         """ Processes the data file(s) and return an iterable
         instance for loop.
 
         Args:
-            maximum_line_length: The maximum sequence length. If provided,
-              sentences exceeding this value will be ignore.
-            maximum_encoded_length: The maximum length of symbols (especially
+            maximum_length: The maximum length of symbols (especially
               after BPE is applied). If provided symbols of one sentence exceeding
               this value will be ignore.
 
@@ -155,8 +171,9 @@ class TextLineInputter(TextInputter):
                    in the constructor.
         """
         if isinstance(self._data_files, list):
-            return [self._make_feeding_data_from(filename) for filename in self._data_files]
-        return self._make_feeding_data_from(self._data_files)
+            return [self._make_feeding_data_from(filename, maximum_length)
+                    for filename in self._data_files]
+        return self._make_feeding_data_from(self._data_files, maximum_length)
 
 
 class ParallelTextInputter(TextInputter):
@@ -349,10 +366,10 @@ class ParallelTextInputter(TextInputter):
             data.append((
                 ss_str_buf[batch_data_idx: batch_data_idx + self._batch_size],
                 tt_str_buf[batch_data_idx: batch_data_idx + self._batch_size], {
-                    self.input_fields[GlobalNames.PH_FEATURE_IDS_NAME]: x,
-                    self.input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]: len_x,
-                    self.input_fields[GlobalNames.PH_LABEL_IDS_NAME]: y,
-                    self.input_fields[GlobalNames.PH_LABEL_LENGTH_NAME]: len_y}))
+                    self.input_fields[Constants.FEATURE_IDS_NAME]: x,
+                    self.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x,
+                    self.input_fields[Constants.LABEL_IDS_NAME]: y,
+                    self.input_fields[Constants.LABEL_LENGTH_NAME]: len_y}))
             batch_data_idx += self._batch_size
         return data
 
@@ -520,10 +537,10 @@ class ParallelTextInputter(TextInputter):
             x, len_x = padding_batch_data(features, self._parent._vocab_source.eos_id)
             y, len_y = padding_batch_data(labels, self._parent._vocab_target.eos_id)
             return {
-                self._parent.input_fields[GlobalNames.PH_FEATURE_IDS_NAME]: x,
-                self._parent.input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]: len_x,
-                self._parent.input_fields[GlobalNames.PH_LABEL_IDS_NAME]: y,
-                self._parent.input_fields[GlobalNames.PH_LABEL_LENGTH_NAME]: len_y}
+                self._parent.input_fields[Constants.FEATURE_IDS_NAME]: x,
+                self._parent.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x,
+                self._parent.input_fields[Constants.LABEL_IDS_NAME]: y,
+                self._parent.input_fields[Constants.LABEL_LENGTH_NAME]: len_y}
 
         def _shuffle(self):
             """ shuffle features & labels file

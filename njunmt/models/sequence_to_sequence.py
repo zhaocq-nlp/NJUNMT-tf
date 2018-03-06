@@ -28,8 +28,8 @@ from njunmt.utils import bridges
 from njunmt.utils import feedback
 from njunmt.utils.configurable import Configurable
 from njunmt.utils.configurable import deep_merge_dict
-from njunmt.utils.global_names import GlobalNames
-from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.constants import Constants
+from njunmt.utils.constants import ModeKeys
 from njunmt.utils.beam_search import process_beam_predictions
 
 # import all bridges
@@ -198,15 +198,15 @@ class SequenceToSequence(Configurable):
         """
         if self.mode == ModeKeys.TRAIN \
                 or self.mode == ModeKeys.EVAL:
-            label_ids = input_fileds[GlobalNames.PH_LABEL_IDS_NAME]
-            label_length = input_fileds[GlobalNames.PH_LABEL_LENGTH_NAME]
+            label_ids = input_fileds[Constants.LABEL_IDS_NAME]
+            label_length = input_fileds[Constants.LABEL_LENGTH_NAME]
             helper = feedback.TrainingFeedback(
                 vocab=self._vocab_target, label_ids=label_ids, label_length=label_length)
 
         else:  # self.mode == tf.contrib.learn.ModeKeys.INFER
             helper = feedback.BeamFeedback(
                 vocab=self._vocab_target,
-                batch_size=tf.shape(input_fileds[GlobalNames.PH_FEATURE_IDS_NAME])[0],
+                batch_size=tf.shape(input_fileds[Constants.FEATURE_IDS_NAME])[0],
                 maximum_labels_length=self.params["inference.maximum_labels_length"],
                 beam_size=self.params["inference.beam_size"],
                 alpha=self.params["inference.length_penalty"])
@@ -226,8 +226,8 @@ class SequenceToSequence(Configurable):
         Returns: The results of encoding, an instance of `collections.namedtuple`
           from `Encoder.encode()`.
         """
-        feature_ids = input_fields[GlobalNames.PH_FEATURE_IDS_NAME]
-        feature_length = input_fields[GlobalNames.PH_FEATURE_LENGTH_NAME]
+        feature_ids = input_fields[Constants.FEATURE_IDS_NAME]
+        feature_length = input_fields[Constants.FEATURE_LENGTH_NAME]
 
         if self.params["source.reverse"]:
             feature_ids = tf.reverse_sequence(
@@ -309,8 +309,8 @@ class SequenceToSequence(Configurable):
         if self.mode == ModeKeys.TRAIN or self.mode == ModeKeys.EVAL:
             loss = self._compute_loss(
                 logits=decoding_result,  # [timesteps, batch_size, dim]
-                label_ids=kwargs[GlobalNames.PH_LABEL_IDS_NAME],
-                label_length=kwargs[GlobalNames.PH_LABEL_LENGTH_NAME],
+                label_ids=kwargs[Constants.LABEL_IDS_NAME],
+                label_length=kwargs[Constants.LABEL_LENGTH_NAME],
                 target_modality=target_modality)
         if self.mode == ModeKeys.TRAIN:
             return loss
@@ -341,4 +341,5 @@ class SequenceToSequence(Configurable):
             beam_size=self.params["inference.beam_size"],
             alpha=self.params["inference.length_penalty"])
         predict_out["attentions"] = attentions
+        predict_out["source"] = kwargs[Constants.FEATURE_IDS_NAME]
         return predict_out

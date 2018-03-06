@@ -20,7 +20,7 @@ from abc import abstractmethod, abstractproperty
 from tensorflow.python.util import nest
 import tensorflow as tf
 
-from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.constants import ModeKeys
 from njunmt.utils.configurable import Configurable
 from njunmt.utils.beam_search import stack_beam_size
 from njunmt.utils.beam_search import gather_states

@@ -25,7 +25,7 @@ import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.client import device_lib
 
-from njunmt.utils.global_names import GlobalNames
+from njunmt.utils.constants import Constants
 
 
 def open_file(filename, encoding="utf-8", mode="r"):
@@ -123,7 +123,7 @@ def dump_model_analysis(model_dir):
         model_dir: The directory name to save to.
     """
     # Dump to file on the chief worker
-    filename = os.path.join(model_dir, GlobalNames.MODEL_ANALYSIS_FILENAME)
+    filename = os.path.join(model_dir, Constants.MODEL_ANALYSIS_FILENAME)
     profile_opt_builder = tf.profiler.ProfileOptionBuilder
     opts = profile_opt_builder.trainable_variables_parameter()
     opts["output"] = "file:outfile={}".format(filename)

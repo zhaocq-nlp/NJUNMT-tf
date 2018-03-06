@@ -20,7 +20,7 @@ import tensorflow as tf
 from collections import namedtuple
 
 from njunmt.encoders.encoder import Encoder
-from njunmt.utils.global_names import ModeKeys
+from njunmt.utils.constants import ModeKeys
 from njunmt.utils.expert_utils import PadRemover
 from njunmt.layers.common_layers import dropout_wrapper
 from njunmt.layers.common_layers import layer_postprocessing
