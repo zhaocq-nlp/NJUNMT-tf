@@ -5,17 +5,21 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-Attention information with UNK noted.
+...
 
 ### Changed
-...
+- Default loss function.
+- Process beam results on GPU.
+- Replace multi-bleu.perl with an equivalent python version.
+- Replace model_analysis APIs with tf.profiler.
 
 ### Removed
-...
+- Configuration: ``multi_bleu_script`` and ``tokenize_scropt``.
 
 ### Fixed
-Bug when mode=EVAL and output attention with BPE.
-
+- Bug when mode=EVAL and output attention with BPE.
+- All str.split(" ") => str.split().
+- Python3 compatibility of njunmt/tools/tokenizeChinese.py.
 
 ## [0.6.0] - 2018-01-26
 ### Added
