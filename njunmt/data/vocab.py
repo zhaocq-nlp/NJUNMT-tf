@@ -20,10 +20,12 @@ import six
 import collections
 from tensorflow import gfile
 from njunmt.data.bpe_encdec import BPE
+from njunmt.utils.constants import Constants
 from njunmt.utils.misc import open_file
 
-SpecialVocab = collections.namedtuple("SpecialVocab",
-                                      ["UNK", "SEQUENCE_START", "SEQUENCE_END"])
+SpecialVocab = collections.namedtuple(
+    "SpecialVocab",
+    [Constants.UNKOWN, Constants.SEQUENCE_START, Constants.SEQUENCE_END])
 
 
 def get_special_vocab(vocabulary_size):
@@ -92,9 +94,9 @@ class Vocab(object):
             ValueError: if `filename` or `bpe_codes_file` does not exist.
         """
         self.vocab_dict, self.vocab_r_dict, _ = create_vocabulary_lookup_table_numpy(filename)
-        self._sos_id = self.vocab_dict["SEQUENCE_START"]
-        self._eos_id = self.vocab_dict["SEQUENCE_END"]
-        self._unk_id = self.vocab_dict["UNK"]
+        self._sos_id = self.vocab_dict[Constants.SEQUENCE_START]
+        self._eos_id = self.vocab_dict[Constants.SEQUENCE_END]
+        self._unk_id = self.vocab_dict[Constants.UNKOWN]
         self._vocab_size = len(self.vocab_dict)
         self._reverse_seq = reverse_seq
         self._bpe = None
@@ -111,6 +113,11 @@ class Vocab(object):
     @property
     def eos_id(self):
         """ Returns the id of the symbol indicating the end of sentence. """
+        return self._eos_id
+
+    @property
+    def pad_id(self):
+        """ Returns the id of the symbol for padding. """
         return self._eos_id
 
     @property
@@ -170,7 +177,7 @@ class Vocab(object):
         ss += [self.eos_id]
         return ss
 
-    def decorate_with_unk(self, words, unk_symbol="UNK"):
+    def decorate_with_unk(self, words, unk_symbol=Constants.UNKOWN):
         """ Append (UNK) to the words that are not in the vocabulary.
 
         Args:
@@ -203,10 +210,10 @@ class Vocab(object):
         pred_tokens = [self.vocab_r_dict[i] for i in pred_ids]
         if bpe_decoding and self._bpe:
             pred_tokens = self._bpe.decode(pred_tokens)
-        if "SEQUENCE_END" in pred_tokens:
+        if Constants.SEQUENCE_END in pred_tokens:
             if len(pred_tokens) == 1:
                 return ['']
-            pred_tokens = pred_tokens[:pred_tokens.index("SEQUENCE_END")]
+            pred_tokens = pred_tokens[:pred_tokens.index(Constants.SEQUENCE_END)]
         if reverse_seq and self._reverse_seq:
             return pred_tokens[::-1]
         return pred_tokens

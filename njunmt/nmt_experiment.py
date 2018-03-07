@@ -153,18 +153,18 @@ class TrainingExperiment(Experiment):
             self._model_configs["train"]["batch_tokens_size"],
             self._model_configs["train"]["shuffle_every_epoch"])
         train_data = train_text_inputter.make_feeding_data(
-            maximum_encoded_features_length=self._model_configs["train"]["maximum_features_length"],
-            maximum_encoded_labels_length=self._model_configs["train"]["maximum_labels_length"])
+            maximum_features_length=self._model_configs["train"]["maximum_features_length"],
+            maximum_labels_length=self._model_configs["train"]["maximum_labels_length"])
         eidx = 0
         while True:
             if sess.should_stop():
                 break
             tf.logging.info("STARTUP Epoch {}".format(eidx))
 
-            for _, data_feeding in train_data:
+            for data in train_data:
                 if sess.should_stop():
                     break
-                sess.run(train_op, feed_dict=data_feeding)
+                sess.run(train_op, feed_dict=data["feed_dict"])
             eidx += 1
 
 
@@ -265,13 +265,13 @@ class InferExperiment(Experiment):
         tf.logging.info("Start inference.")
         overall_start_time = time.time()
 
-        for feeding_data, param in zip(text_inputter.make_feeding_data(),
+        for infer_data, param in zip(text_inputter.make_feeding_data(),
                                        self._model_configs["infer_data"]):
             tf.logging.info("Infer Source File: {}.".format(param["features_file"]))
             start_time = time.time()
             infer(sess=sess,
                   prediction_op=predict_op,
-                  feeding_data=feeding_data,
+                  infer_data=infer_data,
                   output=param["output_file"],
                   vocab_source=self._vocab_source,
                   vocab_target=self._vocab_target,
@@ -385,7 +385,7 @@ class EvalExperiment(Experiment):
         tf.logging.info("Start evaluation.")
         overall_start_time = time.time()
 
-        for feeding_data, param in zip(text_inputter.make_eval_feeding_data(),
+        for eval_data, param in zip(text_inputter.make_feeding_data(in_memory=True),
                                        self._model_configs["eval_data"]):
             tf.logging.info("Evaluation Source File: {}.".format(param["features_file"]))
             tf.logging.info("Evaluation Target File: {}.".format(param["labels_file"]))
@@ -393,7 +393,7 @@ class EvalExperiment(Experiment):
             result = evaluate_with_attention(
                 sess=sess,
                 eval_op=estimator_spec.loss,
-                feeding_data=feeding_data,
+                eval_data=eval_data,
                 vocab_source=self._vocab_source,
                 vocab_target=self._vocab_target,
                 attention_op=estimator_spec.predictions \

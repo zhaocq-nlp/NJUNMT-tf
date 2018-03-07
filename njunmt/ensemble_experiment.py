@@ -106,7 +106,7 @@ class EnsembleExperiment(Experiment):
             start_time = time.time()
             infer(sess=sess,
                   prediction_op=predict_op,
-                  feeding_data=feeding_data,
+                  infer_data=feeding_data,
                   output=param["output_file"],
                   vocab_source=self._vocab_source,
                   vocab_target=self._vocab_target,

@@ -18,12 +18,10 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-
 ModeKeys = tf.contrib.learn.ModeKeys
 
 
 class Constants:
-
     def __init__(self):
         raise OSError("class Constants can not be instantiated.")
 
@@ -74,3 +72,8 @@ class Constants:
 
     # ensemble model namescope prefix
     ENSEMBLE_VARNAME_PREFIX = "ensemble"
+
+    # for vocabulary
+    SEQUENCE_START = "SEQUENCE_START"
+    SEQUENCE_END = "SEQUENCE_END"
+    UNKOWN = "UNK"

@@ -21,7 +21,6 @@ from abc import ABCMeta, abstractmethod
 import numpy
 import six
 import tensorflow as tf
-from tensorflow import gfile
 
 from njunmt.utils.constants import Constants
 from njunmt.utils.misc import open_file, close_file
@@ -54,29 +53,30 @@ def read_line_with_filter(
     return tokens
 
 
+def do_bucketing(pivot, args):
+    """ Sorts the `pivot` and args by length of `pivot`.
+
+    Args:
+        pivot: The pivot.
+        args: A list of others.
+
+    Returns: The same as inputs.
+    """
+    tlen = numpy.array([len(t) for t in pivot])
+    tidx = tlen.argsort()
+    _pivot = [pivot[i] for i in tidx]
+    _args = []
+    for ele in args:
+        _args.append([ele[i] for i in tidx])
+    return _pivot, _args
+
+
 @six.add_metaclass(ABCMeta)
 class TextInputter(object):
     """Base class for inputters. """
 
-    def __init__(self,
-                 dataset,
-                 batch_size=None):
-        """ Initializes common attributes of inputters.
-
-        Args:
-            dataset: A `Dataset` object.
-            batch_size: An integer value indicating the number of
-              sentences passed into one step.
-        """
-        self._dataset = dataset
-        self._vocab_source = self._dataset.vocab_source
-        self._vocab_target = self._dataset.vocab_target
-        self._batch_size = batch_size
-
-    @property
-    def input_fields(self):
-        """ Returns the dictionary of placeholders. """
-        return self._dataset._input_fields
+    def __init__(self):
+        pass
 
     @abstractmethod
     def make_feeding_data(self, *args, **kwargs):
@@ -90,8 +90,7 @@ class TextLineInputter(TextInputter):
     def __init__(self,
                  dataset,
                  data_field_name,
-                 batch_size,
-                 maximum_length=None):
+                 batch_size):
         """ Initializes the parameters for this inputter.
 
         Args:
@@ -100,14 +99,15 @@ class TextLineInputter(TextInputter):
               access to a data file.
             batch_size: An integer value indicating the number of
               sentences passed into one step. Sentences will be padded by EOS.
-            maximum_length: The maximum length.
 
         Raises:
             ValueError: if `batch_size` is None, or if `dataset` has no
               attribute named `data_field_name`, or if the attribute
               `data_field_name` has error type (only str and list available).
         """
-        super(TextLineInputter, self).__init__(dataset, batch_size)
+        super(TextLineInputter, self).__init__()
+        self._data_field_name = data_field_name
+        self._batch_size = batch_size
         if self._batch_size is None:
             raise ValueError("batch_size should be provided.")
         if not hasattr(dataset, data_field_name):
@@ -119,10 +119,11 @@ class TextLineInputter(TextInputter):
                              "which should be str or list".format(data_field_name))
         if "features" in data_field_name:
             self._preprocessing_fn = lambda x: dataset.vocab_source.convert_to_idlist(x)
-            self._padding = dataset.vocab_source.eos_id
+            self._padding = dataset.vocab_source.pad_id
         else:
             self._preprocessing_fn = lambda x: dataset.vocab_target.convert_to_idlist(x)
-            self._padding = dataset.vocab_target.eos_id
+            self._padding = dataset.vocab_target.pad_id
+        self.input_fields = dataset.input_fields
 
     def _make_feeding_data_from(self,
                                 filename,
@@ -152,9 +153,16 @@ class TextLineInputter(TextInputter):
                 ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
                 self._padding)
             batch_data_idx += self._batch_size
-            data.append({
-                self.input_fields[Constants.FEATURE_IDS_NAME]: x,
-                self.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x})
+            if "features" in self._data_field_name:
+                data.append({"feature_ids": x,
+                             "feed_dict": {
+                                 self.input_fields[Constants.FEATURE_IDS_NAME]: x,
+                                 self.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x}})
+            else:
+                data.append({"label_ids": x,
+                             "feed_dict": {
+                                 self.input_fields[Constants.LABEL_IDS_NAME]: x,
+                                 self.input_fields[Constants.LABEL_LENGTH_NAME]: len_x}})
         return data
 
     def make_feeding_data(self, maximum_length=None):
@@ -210,8 +218,8 @@ class ParallelTextInputter(TextInputter):
               `features_field_name` or `labels_field_name`.
 
         """
-        super(ParallelTextInputter, self).__init__(
-            dataset, batch_size)
+        super(ParallelTextInputter, self).__init__()
+        self._batch_size = batch_size
         self._batch_tokens_size = batch_tokens_size
         self._shuffle_every_epoch = shuffle_every_epoch
         if not hasattr(dataset, features_field_name):
@@ -220,8 +228,8 @@ class ParallelTextInputter(TextInputter):
         if not hasattr(dataset, labels_field_name):
             raise ValueError("dataset object has no attribute named \"{}\""
                              .format(labels_field_name))
-        self._features_file = getattr(self._dataset, features_field_name)
-        self._labels_file = getattr(self._dataset, labels_field_name)
+        self._features_file = getattr(dataset, features_field_name)
+        self._labels_file = getattr(dataset, labels_field_name)
         self._bucketing = bucketing
         if self._batch_size is None and self._batch_tokens_size is None:
             raise ValueError("Either batch_size or batch_tokens_size should be provided.")
@@ -234,142 +242,128 @@ class ParallelTextInputter(TextInputter):
             self._cache_size = self._batch_tokens_size * 6  # 4096 * 6 := 25000
             if batch_size is None:
                 self._batch_size = 32
+        self._features_preprocessing_fn = lambda x: dataset.vocab_source.convert_to_idlist(x)
+        self._labels_preprocessing_fn = lambda x: dataset.vocab_target.convert_to_idlist(x)
+        self._features_padding = dataset.vocab_source.pad_id
+        self._labels_padding = dataset.vocab_target.pad_id
+        self.input_fields = dataset.input_fields
 
     def make_feeding_data(self,
                           maximum_features_length=None,
                           maximum_labels_length=None,
-                          maximum_encoded_features_length=None,
-                          maximum_encoded_labels_length=None):
+                          in_memory=False):
         """ Processes the data files and return an iterable
               instance for loop.
 
         Args:
-            maximum_features_length: The maximum sequence length of "features" field.
-              If provided, sentences exceeding this value will be ignore.
-            maximum_labels_length: The maximum sequence length of "labels" field.
-              If provided, sentences exceeding this value will be ignore.
-            maximum_encoded_features_length: The maximum length of feature symbols (especially
-              after BPE is applied) . If provided, the number of symbols of one sentence
-              exceeding this value will be ignore.
-            maximum_encoded_labels_length: The maximum length of label symbols (especially
-              after BPE is applied) . If provided, the number of symbols of one sentence
-              exceeding this value will be ignore.
+            maximum_features_length: The maximum length of symbols (especially
+              after BPE is applied). If provided symbols of one sentence exceeding
+              this value will be ignore.
+            maximum_labels_length: The maximum length of symbols (especially
+              after BPE is applied). If provided symbols of one sentence exceeding
+              this value will be ignore.
+            in_memory: Whether to load all data into memory.
 
         Returns: An iterable instance or a list of iterable instances.
         """
         if self._features_file is None or self._labels_file is None:
             raise ValueError("Both _features_file and _labels_file should be provided.")
         if isinstance(self._features_file, list):
-            return [self._make_feeding_data(f, l, maximum_features_length, maximum_labels_length,
-                                            maximum_encoded_features_length, maximum_encoded_labels_length)
+            return [self._make_feeding_data(f, l, maximum_features_length,
+                                            maximum_labels_length, in_memory)
                     for f, l in zip(self._features_file, self._labels_file)]
         return self._make_feeding_data(
             self._features_file, self._labels_file,
             maximum_features_length, maximum_labels_length,
-            maximum_encoded_features_length, maximum_encoded_labels_length)
+            in_memory)
 
     def _make_feeding_data(self,
                            features_file,
                            labels_file,
                            maximum_features_length=None,
                            maximum_labels_length=None,
-                           maximum_encoded_features_length=None,
-                           maximum_encoded_labels_length=None):
+                           in_memory=False):
         """ Processes the data files and return an iterable
               instance for loop.
 
         Args:
             features_file: The path of features file.
             labels_file: The path of labels file.
-            maximum_features_length: The maximum sequence length of "features" field.
-              If provided, sentences exceeding this value will be ignore.
-            maximum_labels_length: The maximum sequence length of "labels" field.
-              If provided, sentences exceeding this value will be ignore.
-            maximum_encoded_features_length: The maximum length of feature symbols (especially
+            maximum_features_length: The maximum length of feature symbols (especially
               after BPE is applied) . If provided, the number of symbols of one sentence
               exceeding this value will be ignore.
-            maximum_encoded_labels_length: The maximum length of label symbols (especially
+            maximum_labels_length: The maximum length of label symbols (especially
               after BPE is applied) . If provided, the number of symbols of one sentence
               exceeding this value will be ignore.
+            in_memory: Whether to load all data into memory.
 
         Returns: An iterable instance.
         """
         if features_file is None or labels_file is None:
             raise ValueError("Both features_file and labels_file should be provided.")
+        if in_memory:
+            self._SmallParallelData(
+                features_file, labels_file,
+                maximum_features_length, maximum_labels_length)
         return self._BigParallelData(
             self, features_file, labels_file,
-            maximum_features_length, maximum_labels_length,
-            maximum_encoded_features_length, maximum_encoded_labels_length)
+            maximum_features_length, maximum_labels_length)
 
-    def make_eval_feeding_data(self):
-        """ Processes the data files and return an iterable instance for loop,
-        especially for output_attention when EVAL.
-
-        Returns: An iterable instance or a list of iterable instances.
-
-        """
-        if self._features_file is None or self._labels_file is None:
-            raise ValueError("Both _features_file and _labels_file should be provided.")
-        if isinstance(self._features_file, list):
-            return [self._EvalParallelData(f, l)
-                    for f, l in zip(self._features_file, self._labels_file)]
-        return self._EvalParallelData(
-            self._features_file, self._labels_file)
-
-    def _EvalParallelData(self,
-                          features_file,
-                          labels_file):
+    def _SmallParallelData(self,
+                           features_file,
+                           labels_file,
+                           maximum_features_length=None,
+                           maximum_labels_length=None):
         """ Function for reading small scale parallel data for evaluation.
 
         Args:
             features_file: The path of features file.
             labels_file: The path of labels file.
+            maximum_features_length: The maximum length of feature symbols (especially
+              after BPE is applied) . If provided, the number of symbols of one sentence
+              exceeding this value will be ignore.
+            maximum_labels_length: The maximum length of label symbols (especially
+              after BPE is applied) . If provided, the number of symbols of one sentence
+              exceeding this value will be ignore.
 
         Returns: A list of feeding data.
         """
-        eval_features = open_file(features_file, encoding="utf-8")
-        eval_labels = open_file(labels_file[0], encoding="utf-8")
+        features = open_file(features_file, encoding="utf-8")
+        labels = open_file(labels_file[0], encoding="utf-8")
 
         ss_buf = []
         tt_buf = []
-        ss_str_buf = []
-        tt_str_buf = []
-        for ss, tt in zip(eval_features, eval_labels):
-            ss_str = self._vocab_source.bpe_encode(ss.strip()).split()
-            tt_str = self._vocab_target.bpe_encode(tt.strip()).split()
-            ss_str_buf.append(ss_str)
-            tt_str_buf.append(tt_str)
-            ss_buf.append(self._vocab_source.convert_to_idlist(ss.strip()))
-            tt_buf.append(self._vocab_target.convert_to_idlist(tt.strip()))
-        close_file(eval_features)
-        close_file(eval_labels)
+        while True:
+            ss = read_line_with_filter(features, maximum_features_length,
+                                       self._features_preprocessing_fn)
+            tt = read_line_with_filter(labels, maximum_labels_length,
+                                       self._labels_preprocessing_fn)
+            if ss == "" or tt == "":
+                break
+            ss_buf.append(ss)
+            tt_buf.append(tt)
+        close_file(features)
+        close_file(labels)
         if self._bucketing:
-            tlen = numpy.array([len(t) for t in tt_buf])
-            tidx = tlen.argsort()
-            _ss_buf = [ss_buf[i] for i in tidx]
-            _tt_buf = [tt_buf[i] for i in tidx]
-            _ss_str_buf = [ss_str_buf[i] for i in tidx]
-            _tt_str_buf = [tt_str_buf[i] for i in tidx]
-            ss_buf = _ss_buf
-            tt_buf = _tt_buf
-            ss_str_buf = _ss_str_buf
-            tt_str_buf = _tt_str_buf
+            tt_buf, ss_buf = do_bucketing(tt_buf, [ss_buf])
+            ss_buf = ss_buf[0]
         data = []
         batch_data_idx = 0
         while batch_data_idx < len(ss_buf):
             x, len_x = padding_batch_data(
                 ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                self._vocab_source.eos_id)
+                self._features_padding)
             y, len_y = padding_batch_data(
                 tt_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                self._vocab_target.eos_id)
-            data.append((
-                ss_str_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                tt_str_buf[batch_data_idx: batch_data_idx + self._batch_size], {
+                self._labels_padding)
+            data.append({
+                "feature_ids": x,
+                "label_ids": y,
+                "feed_dict": {
                     self.input_fields[Constants.FEATURE_IDS_NAME]: x,
                     self.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x,
                     self.input_fields[Constants.LABEL_IDS_NAME]: y,
-                    self.input_fields[Constants.LABEL_LENGTH_NAME]: len_y}))
+                    self.input_fields[Constants.LABEL_LENGTH_NAME]: len_y}})
             batch_data_idx += self._batch_size
         return data
 
@@ -381,23 +375,17 @@ class ParallelTextInputter(TextInputter):
                      features_file,
                      labels_file,
                      maximum_features_length=None,
-                     maximum_labels_length=None,
-                     maximum_encoded_features_length=None,
-                     maximum_encoded_labels_length=None):
+                     maximum_labels_length=None):
             """ Initializes.
 
             Args:
                 parent: A `ParallelTextInputter` object.
                 features_file: The path of features file.
                 labels_file: The path of labels file.
-                maximum_features_length: The maximum sequence length of "features" field.
-                  If provided, sentences exceeding this value will be ignore.
-                maximum_labels_length: The maximum sequence length of "labels" field.
-                  If provided, sentences exceeding this value will be ignore.
-                maximum_encoded_features_length: The maximum length of feature symbols (especially
+                maximum_features_length: The maximum length of feature symbols (especially
                   after BPE is applied) . If provided, the number of symbols of one sentence
                   exceeding this value will be ignore.
-                maximum_encoded_labels_length: The maximum length of label symbols (especially
+                maximum_labels_length: The maximum length of label symbols (especially
                   after BPE is applied) . If provided, the number of symbols of one sentence
                   exceeding this value will be ignore.
             """
@@ -407,16 +395,7 @@ class ParallelTextInputter(TextInputter):
                 else labels_file
             self._maximum_features_length = maximum_features_length
             self._maximum_labels_length = maximum_labels_length
-            self._maximum_encoded_features_length = maximum_encoded_features_length
-            self._maximum_encoded_labels_length = maximum_encoded_labels_length
-            if self._parent._shuffle_every_epoch:
-                self._shuffle_features_file = self._features_file.strip().split("/")[-1] \
-                                              + "." + self._parent._shuffle_every_epoch
-                self._shuffle_labels_file = self._labels_file.strip().split("/")[-1] \
-                                            + "." + self._parent._shuffle_every_epoch
-                self._shuffle()
-            self._features = open_file(self._features_file, encoding="utf-8")
-            self._labels = open_file(self._labels_file, encoding="utf-8")
+            self._features, self._labels = self._shuffle_and_reopen()
             self._features_buffer = []
             self._labels_buffer = []
             self._features_len_buffer = []
@@ -427,46 +406,11 @@ class ParallelTextInputter(TextInputter):
             return self
 
         def _reset(self):
-            if self._parent._shuffle_every_epoch:
-                close_file(self._features)
-                close_file(self._labels)
-                self._shuffle()
-                self._features = open_file(self._features_file, encoding="utf-8")
-                self._labels = open_file(self._labels_file, encoding="utf-8")
-            self._features.seek(0)
-            self._labels.seek(0)
+            self._features, self._labels = self._shuffle_and_reopen()
 
         def __next__(self):
-            """ capable for python3
-            :return:
-            """
+            """ capable for python3 """
             return self.next()
-
-        def _next_features(self):
-            ss_tmp = self._features.readline()
-            if ss_tmp == "":
-                return ""
-            ss_tmp = ss_tmp.strip().split()
-            if self._maximum_features_length and len(ss_tmp) > self._maximum_features_length:
-                return None
-            encoded_ss = self._parent._vocab_source.convert_to_idlist(ss_tmp)
-            if self._maximum_encoded_features_length and len(
-                    encoded_ss) - 1 > self._maximum_encoded_features_length:
-                return None
-            return encoded_ss
-
-        def _next_labels(self):
-            tt_tmp = self._labels.readline()
-            if tt_tmp == "":
-                return ""
-            tt_tmp = tt_tmp.strip().split()
-            if self._maximum_labels_length and len(tt_tmp) > self._maximum_labels_length:
-                return None
-            encoded_tt = self._parent._vocab_target.convert_to_idlist(tt_tmp)
-            if self._maximum_encoded_labels_length and len(
-                    encoded_tt) - 1 > self._maximum_encoded_labels_length:
-                return None
-            return encoded_tt
 
         def next(self):
             if self._end_of_data:
@@ -478,8 +422,10 @@ class ParallelTextInputter(TextInputter):
             if len(self._features_buffer) < self._parent._batch_size:
                 cnt = len(self._features_buffer)
                 while cnt < self._parent._cache_size:
-                    ss = self._next_features()
-                    tt = self._next_labels()
+                    ss = read_line_with_filter(self._features, self._maximum_features_length,
+                                               self._parent._features_preprocessing_fn)
+                    tt = read_line_with_filter(self._labels, self._maximum_labels_length,
+                                               self._parent._labels_preprocessing_fn)
                     if ss == "" or tt == "":
                         break
                     if ss is None or tt is None:
@@ -493,12 +439,9 @@ class ParallelTextInputter(TextInputter):
                     raise StopIteration
                 if self._parent._bucketing:
                     # sort by len
-                    tlen = numpy.array([len(t) for t in self._labels_buffer])
-                    tidx = tlen.argsort()
-                    _fbuf = [self._features_buffer[i] for i in tidx]
-                    _lbuf = [self._labels_buffer[i] for i in tidx]
-                    self._features_buffer = _fbuf
-                    self._labels_buffer = _lbuf
+                    self._labels_buffer, self._features_buffer \
+                        = do_bucketing(self._labels_buffer, [self._features_buffer])
+                    self._features_buffer = self._features_buffer[0]
                 self._features_len_buffer = [len(s) for s in self._features_buffer]
                 self._labels_len_buffer = [len(t) for t in self._labels_buffer]
             local_batch_size = self._parent._batch_size
@@ -531,26 +474,43 @@ class ParallelTextInputter(TextInputter):
                 self._end_of_data = False
                 self._reset()
                 raise StopIteration
-            return len(features), self._make_inputs(features, labels)
+            return {"feature_ids": features,
+                    "label_ids": labels,
+                    "feed_dict": self._make_inputs(features, labels)}
 
         def _make_inputs(self, features, labels):
-            x, len_x = padding_batch_data(features, self._parent._vocab_source.eos_id)
-            y, len_y = padding_batch_data(labels, self._parent._vocab_target.eos_id)
+            x, len_x = padding_batch_data(features, self._parent._features_padding)
+            y, len_y = padding_batch_data(labels, self._parent._labels_padding)
             return {
                 self._parent.input_fields[Constants.FEATURE_IDS_NAME]: x,
                 self._parent.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x,
                 self._parent.input_fields[Constants.LABEL_IDS_NAME]: y,
                 self._parent.input_fields[Constants.LABEL_LENGTH_NAME]: len_y}
 
-        def _shuffle(self):
+        def _shuffle_and_reopen(self):
             """ shuffle features & labels file
 
             :return:
             """
-            tf.logging.info("shuffling data\n\t{} ==> {}\n\t{} ==> {}"
-                            .format(self._features_file, self._shuffle_features_file,
-                                    self._labels_file, self._shuffle_labels_file))
-            shuffle_data([self._features_file, self._labels_file],
-                         [self._shuffle_features_file, self._shuffle_labels_file])
-            self._features_file = self._shuffle_features_file
-            self._labels_file = self._shuffle_labels_file
+            if self._parent._shuffle_every_epoch:
+                if not hasattr(self, "_shuffled_features_file"):
+                    self._shuffled_features_file = self._features_file.strip().split("/")[-1] \
+                                                   + "." + self._parent._shuffle_every_epoch
+                    self._shuffled_labels_file = self._labels_file.strip().split("/")[-1] \
+                                                 + "." + self._parent._shuffle_every_epoch
+
+                tf.logging.info("shuffling data\n\t{} ==> {}\n\t{} ==> {}"
+                                .format(self._features_file, self._shuffled_features_file,
+                                        self._labels_file, self._shuffled_labels_file))
+                shuffle_data([self._features_file, self._labels_file],
+                             [self._shuffled_features_file, self._shuffled_labels_file])
+                self._features_file = self._shuffled_features_file
+                self._labels_file = self._shuffled_labels_file
+                if hasattr(self, "_features"):
+                    close_file(self._features)
+                    close_file(self._labels)
+            elif hasattr(self, "_features"):
+                self._features.seek(0)
+                self._labels.seek(0)
+                return self._features, self._labels
+            return open_file(self._features_file), open_file(self._labels_file)

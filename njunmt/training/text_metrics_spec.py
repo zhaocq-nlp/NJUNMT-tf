@@ -195,9 +195,14 @@ class LossMetricSpec(TextMetricSpec):
             batch_tokens_size=None,
             shuffle_every_epoch=None,
             bucketing=True)
-        self._eval_feeding_data = text_inputter.make_feeding_data()
-        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.EVAL, dataset=self._dataset,
-                                  name=self._model_name, reuse=True, verbose=False)
+        self._eval_feeding_data = text_inputter.make_feeding_data(in_memory=True)
+        estimator_spec = model_fn(
+            model_configs=self._model_configs,
+            mode=ModeKeys.EVAL,
+            dataset=self._dataset,
+            name=self._model_name,
+            reuse=True,
+            verbose=False)
         self._loss_op = estimator_spec.loss
         # for learning decay decay
         self._half_lr = False
@@ -208,7 +213,7 @@ class LossMetricSpec(TextMetricSpec):
             self._max_patience = self._model_configs["optimizer_params"]["optimizer.lr_decay"]["patience"]
             div_factor = lr_tensor_dict[Constants.LR_ANNEAL_DIV_FACTOR_NAME]
             self._half_lr_op = div_factor.assign(div_factor * 2.)
-            self._patience = 0
+            self._bad_count = 0
             self._min_loss = 10000.
 
     def _do_evaluation(self, run_context, global_step):
@@ -223,18 +228,18 @@ class LossMetricSpec(TextMetricSpec):
         """
         loss = evaluate(sess=run_context.session,
                         eval_op=self._loss_op,
-                        feeding_data=self._eval_feeding_data)
+                        eval_data=self._eval_feeding_data)
         tf.logging.info("Evaluating DEVSET: DevLoss=%f  GlobalStep=%d" % (loss, global_step))
         if self._summary_writer is not None:
             self._summary_writer.add_summary("Metrics/DevLoss", loss, global_step)
         if self._half_lr:
             if loss <= self._min_loss:
                 self._min_loss = loss
-                self._patience = 0
+                self._bad_count = 0
             else:
-                self._patience += 1
-                if self._patience >= self._max_patience:
-                    self._patience = 0
+                self._bad_count += 1
+                if self._bad_count >= self._max_patience:
+                    self._bad_count = 0
                     run_context.session.run(self._half_lr_op)
                     now_lr = run_context.session.run(self._learning_rate)
                     tf.logging.info("Hit maximum patience=%d. HALF THE LEARNING RATE TO %f at %d"
@@ -326,7 +331,7 @@ class BleuMetricSpec(TextMetricSpec):
             dataset=self._dataset,
             data_field_name="eval_features_file",
             batch_size=self._batch_size)
-        self._eval_feeding_data = text_inputter.make_feeding_data()
+        self._infer_data = text_inputter.make_feeding_data()
         self._model_configs = update_infer_params(  # update inference parameters
             self._model_configs,
             beam_size=self._beam_size,
@@ -364,7 +369,7 @@ class BleuMetricSpec(TextMetricSpec):
         sources, hypothesis = infer(
             sess=run_context.session,
             prediction_op=self._predict_ops,
-            feeding_data=self._eval_feeding_data,
+            infer_data=self._infer_data,
             output=output_prediction_file,
             vocab_target=self._dataset.vocab_target,
             vocab_source=self._dataset.vocab_source,
@@ -376,10 +381,7 @@ class BleuMetricSpec(TextMetricSpec):
         random_start = random.randint(0, len(hypothesis) - 5)
         for idx in range(5):
             tf.logging.info("Sample%d Source: %s" % (idx, self._sources[idx + random_start].strip()))
-            encoded_input = sources[idx + random_start].strip().split()
-            encoded_input = [x + "(UNK)" if self._dataset.vocab_source[x] == self._dataset.vocab_source.unk_id
-                             else x for x in encoded_input]
-            tf.logging.info("Sample%d Encoded Input: %s" % (idx, " ".join(encoded_input)))
+            tf.logging.info("Sample%d Encoded Input: %s" % (idx, sources[idx + random_start]))
             tf.logging.info("Sample%d Reference: %s" % (idx, self._references[idx + random_start][0].strip()))
             tf.logging.info("Sample%d Hypothesis: %s\n" % (idx, hypothesis[idx + random_start].strip()))
         # evaluate with BLEU
@@ -426,13 +428,12 @@ class BleuMetricSpec(TextMetricSpec):
         if len(self._best_checkpoint_names) == 0 or bleu > self._best_checkpoint_bleus[0]:
             tarname = "{}{}.tar.gz".format(Constants.CKPT_TGZ_FILENAME_PREFIX, global_step)
             os.system("tar -zcvf {tarname} {checkpoint} {model_config} {model_analysis} {ckptdir}/*{global_step}*"
-                .format(
-                tarname=tarname,
-                checkpoint=os.path.join(self._checkpoint_dir, "checkpoint"),
-                model_config=os.path.join(self._checkpoint_dir, Constants.MODEL_CONFIG_YAML_FILENAME),
-                model_analysis=os.path.join(self._checkpoint_dir, Constants.MODEL_ANALYSIS_FILENAME),
-                ckptdir=self._checkpoint_dir,
-                global_step=global_step))
+                      .format(tarname=tarname,
+                              checkpoint=os.path.join(self._checkpoint_dir, "checkpoint"),
+                              model_config=os.path.join(self._checkpoint_dir, Constants.MODEL_CONFIG_YAML_FILENAME),
+                              model_analysis=os.path.join(self._checkpoint_dir, Constants.MODEL_ANALYSIS_FILENAME),
+                              ckptdir=self._checkpoint_dir,
+                              global_step=global_step))
             self._best_checkpoint_bleus.append(bleu)
             self._best_checkpoint_names.append(tarname)
             if len(self._best_checkpoint_bleus) > self._maximum_keep_models:
