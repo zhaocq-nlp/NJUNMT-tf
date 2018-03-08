@@ -19,7 +19,7 @@ metrics:
       early_stop: true
 
 # basic transformer parameters
-model: njunmt.models.transformer.Transformer
+model: njunmt.models.SequenceToSequence
 model_params: 
   embedding.dim.source: &dmodel 1024
   embedding.dim.target: *dmodel

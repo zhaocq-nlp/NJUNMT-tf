@@ -488,10 +488,7 @@ class ParallelTextInputter(TextInputter):
                 self._parent.input_fields[Constants.LABEL_LENGTH_NAME]: len_y}
 
         def _shuffle_and_reopen(self):
-            """ shuffle features & labels file
-
-            :return:
-            """
+            """ shuffle features & labels file. """
             if self._parent._shuffle_every_epoch:
                 if not hasattr(self, "_shuffled_features_file"):
                     self._shuffled_features_file = self._features_file.strip().split("/")[-1] \
