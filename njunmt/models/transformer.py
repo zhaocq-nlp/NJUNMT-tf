@@ -52,7 +52,7 @@ class Transformer(SequenceToSequence):
                                           name=name, verbose=verbose)
         assert self.params["encoder.class"].endswith("TransformerEncoder"), (
             "Transformer must use TransformerEncoder.")
-        assert self.params["decoder.class"].endswith("TransformerDecocder"), (
+        assert self.params["decoder.class"].endswith("TransformerDecoder"), (
             "Transformer must use TransformerDecoder.")
 
     @staticmethod
@@ -62,7 +62,7 @@ class Transformer(SequenceToSequence):
         t2t_default_params["initializer"] = "uniform_unit_scaling"
         t2t_default_params["inference.beam_size"] = 4
         t2t_default_params["encoder.class"] = "njunmt.encoders.transformer_encoder.TransformerEncoder"
-        t2t_default_params["decoder.class"] = "njunmt.decoders.transformer_decoder.TransformerDecocder"
+        t2t_default_params["decoder.class"] = "njunmt.decoders.transformer_decoder.TransformerDecoder"
         if "bridge.class" in t2t_default_params:
             t2t_default_params.pop("bridge.class")
         if "bridge.params" in t2t_default_params:
