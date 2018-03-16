@@ -206,11 +206,15 @@ class LossMetricSpec(TextMetricSpec):
         self._loss_op = estimator_spec.loss
         # for learning decay decay
         self._half_lr = False
+        self._start_decay_at = 0
         if self._model_configs["optimizer_params"]["optimizer.lr_decay"]["decay_type"] == "loss_decay":
             self._half_lr = True
             lr_tensor_dict = get_dict_from_collection(Constants.LEARNING_RATE_VAR_NAME)
             self._learning_rate = lr_tensor_dict[Constants.LEARNING_RATE_VAR_NAME]
             self._max_patience = self._model_configs["optimizer_params"]["optimizer.lr_decay"]["patience"]
+            self._start_decay_at = self._model_configs["optimizer_params"]["optimizer.lr_decay"]["start_decay_at"]
+            assert self._start_decay_at >= self._start_at, (
+                "start_decay_at in optimizer.lr_decay should be no less than start_at in LossMetricSpec.")
             div_factor = lr_tensor_dict[Constants.LR_ANNEAL_DIV_FACTOR_NAME]
             self._half_lr_op = div_factor.assign(div_factor * 2.)
             self._bad_count = 0
@@ -232,7 +236,7 @@ class LossMetricSpec(TextMetricSpec):
         tf.logging.info("Evaluating DEVSET: DevLoss=%f  GlobalStep=%d" % (loss, global_step))
         if self._summary_writer is not None:
             self._summary_writer.add_summary("Metrics/DevLoss", loss, global_step)
-        if self._half_lr:
+        if self._half_lr and global_step >= self._start_decay_at:
             if loss <= self._min_loss:
                 self._min_loss = loss
                 self._bad_count = 0
