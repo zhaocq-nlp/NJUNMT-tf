@@ -12,7 +12,7 @@ optimizer_params:
   
   optimizer.lr_decay:
     decay_type: loss_decay
-    patience: 20
+    patience: 30
     decay_steps: 100
     decay_rate: 0.99
     start_decay_at: 0
