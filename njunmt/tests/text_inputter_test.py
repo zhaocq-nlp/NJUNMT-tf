@@ -25,8 +25,8 @@ class TextInputterTest(object):
     def testTrainDataLoader(self):
         vocab_src = Vocab(vocab_src_file)
         vocab_trg = Vocab(vocab_trg_file)
-        vocab_srcbpe = Vocab(vocab_srcbpe_file, bpe_codes_file=codes_src_file)
-        vocab_trgbpe = Vocab(vocab_trgbpe_file, bpe_codes_file=codes_trg_file)
+        vocab_srcbpe = Vocab(vocab_srcbpe_file, bpe_codes=codes_src_file)
+        vocab_trgbpe = Vocab(vocab_trgbpe_file, bpe_codes=codes_trg_file)
         data = TrainTextIterator(
             train_src_file, train_trg_file,
             vocab_src, vocab_trg,
@@ -40,7 +40,7 @@ class TextInputterTest(object):
 
     def testTestDataLoader(self):
         vocab_src = Vocab(vocab_src_file)
-        vocab_srcbpe = Vocab(vocab_srcbpe_file, bpe_codes_file=codes_src_file)
+        vocab_srcbpe = Vocab(vocab_srcbpe_file, bpe_codes=codes_src_file)
         data = TestTextIterator(
             train_src_file,
             vocab_srcbpe, batch_size=1)
@@ -53,8 +53,8 @@ class TextInputterTest(object):
     def testEvalDataLoader(self):
         vocab_src = Vocab(vocab_src_file)
         vocab_trg = Vocab(vocab_trg_file)
-        vocab_srcbpe = Vocab(vocab_srcbpe_file, bpe_codes_file=codes_src_file)
-        vocab_trgbpe = Vocab(vocab_trgbpe_file, bpe_codes_file=codes_trg_file)
+        vocab_srcbpe = Vocab(vocab_srcbpe_file, bpe_codes=codes_src_file)
+        vocab_trgbpe = Vocab(vocab_trgbpe_file, bpe_codes=codes_trg_file)
         data = EvalTextIterator(
             train_src_file, train_trg_file,
             vocab_src, vocab_trg,

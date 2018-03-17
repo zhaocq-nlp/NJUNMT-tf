@@ -77,10 +77,10 @@ class EnsembleExperiment(Experiment):
         """ Runs ensemble model. """
         self._vocab_source = Vocab(
             filename=self._model_configs["infer"]["source_words_vocabulary"],
-            bpe_codes_file=self._model_configs["infer"]["source_bpecodes"])
+            bpe_codes=self._model_configs["infer"]["source_bpecodes"])
         self._vocab_target = Vocab(
             filename=self._model_configs["infer"]["target_words_vocabulary"],
-            bpe_codes_file=self._model_configs["infer"]["target_bpecodes"])
+            bpe_codes=self._model_configs["infer"]["target_bpecodes"])
         # build dataset
         dataset = Dataset(
             self._vocab_source,

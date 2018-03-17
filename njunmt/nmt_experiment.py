@@ -91,8 +91,8 @@ class TrainingExperiment(Experiment):
             "train_labels_file": None,
             "eval_features_file": None,
             "eval_labels_file": None,
-            "source_bpecodes": None,
-            "target_bpecodes": None
+            "source_bpecodes": {},
+            "target_bpecodes": {}
         }
 
     @staticmethod
@@ -115,11 +115,11 @@ class TrainingExperiment(Experiment):
         # vocabulary
         self._vocab_source = Vocab(
             filename=self._model_configs["data"]["source_words_vocabulary"],
-            bpe_codes_file=self._model_configs["data"]["source_bpecodes"],
+            bpe_codes=self._model_configs["data"]["source_bpecodes"],
             reverse_seq=False)
         self._vocab_target = Vocab(
             filename=self._model_configs["data"]["target_words_vocabulary"],
-            bpe_codes_file=self._model_configs["data"]["target_bpecodes"],
+            bpe_codes=self._model_configs["data"]["target_bpecodes"],
             reverse_seq=self._model_configs["train"]["reverse_target"])
         # build dataset
         dataset = Dataset(
@@ -198,8 +198,8 @@ class InferExperiment(Experiment):
         return {
             "source_words_vocabulary": None,
             "target_words_vocabulary": None,
-            "source_bpecodes": None,
-            "target_bpecodes": None,
+            "source_bpecodes": {},
+            "target_bpecodes": {},
             "batch_size": 32,
             "beam_size": 10,
             "length_penalty": -1.0,
@@ -221,11 +221,11 @@ class InferExperiment(Experiment):
         # build datasets
         self._vocab_source = Vocab(
             filename=self._model_configs["infer"]["source_words_vocabulary"],
-            bpe_codes_file=self._model_configs["infer"]["source_bpecodes"],
+            bpe_codes=self._model_configs["infer"]["source_bpecodes"],
             reverse_seq=False)
         self._vocab_target = Vocab(
             filename=self._model_configs["infer"]["target_words_vocabulary"],
-            bpe_codes_file=self._model_configs["infer"]["target_bpecodes"],
+            bpe_codes=self._model_configs["infer"]["target_bpecodes"],
             reverse_seq=self._model_configs["train"]["reverse_target"])
         # build dataset
         dataset = Dataset(
@@ -321,8 +321,8 @@ class EvalExperiment(Experiment):
             "metric": None,
             "source_words_vocabulary": None,
             "target_words_vocabulary": None,
-            "source_bpecodes": None,
-            "target_bpecodes": None,
+            "source_bpecodes": {},
+            "target_bpecodes": {},
             "batch_size": 32}
 
     @staticmethod
@@ -338,11 +338,11 @@ class EvalExperiment(Experiment):
         # build datasets
         self._vocab_source = Vocab(
             filename=self._model_configs["eval"]["source_words_vocabulary"],
-            bpe_codes_file=self._model_configs["eval"]["source_bpecodes"],
+            bpe_codes=self._model_configs["eval"]["source_bpecodes"],
             reverse_seq=False)
         self._vocab_target = Vocab(
             filename=self._model_configs["eval"]["target_words_vocabulary"],
-            bpe_codes_file=self._model_configs["eval"]["target_bpecodes"],
+            bpe_codes=self._model_configs["eval"]["target_bpecodes"],
             reverse_seq=self._model_configs["train"]["reverse_target"])
         # build dataset
         dataset = Dataset(

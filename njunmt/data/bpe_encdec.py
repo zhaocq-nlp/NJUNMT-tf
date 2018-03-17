@@ -16,7 +16,8 @@ import re
 
 
 class BPE(object):
-    def __init__(self, codes, separator='@@', vocab=None, vocabulary_threshold=None):
+    def __init__(self, codes=None, separator='@@', vocab=None, vocabulary_threshold=None):
+        assert codes, "codes should be provided."
         codes = codecs.open(codes, encoding='utf-8')
         # check version information
         firstline = codes.readline()
@@ -269,7 +270,8 @@ if __name__ == '__main__':
     #         break
 
     bpe = BPE(bpe_code, "@@", vocab, 50)
-    print (bpe.encode("they are run by the South Westphalia Transport Services ( Verkehrsbetriebe Westfalen @-@ Süd ; VWS ) whose headquarters are in Siegen ."))
+    print (bpe.encode(
+        "they are run by the South Westphalia Transport Services ( Verkehrsbetriebe Westfalen @-@ Süd ; VWS ) whose headquarters are in Siegen ."))
 
     # mei dai vocabulary
     # they are run by the South Westphalia Transport Services ( Verkehrs@@ betriebe Westfalen @-@ Süd ; V@@ WS ) whose headquarters are in Siegen .

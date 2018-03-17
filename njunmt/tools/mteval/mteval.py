@@ -18,6 +18,9 @@ if __name__ == "__main__":
     # script dir
     parser.add_argument('-d', '--script-dir', type=str)
 
+    parser.add_argument("-l", "--language", type=str)
+    parser.add_argument("-o", "--organization", type=str, default="simpletest")
+
     args = parser.parse_args()
 
     # to character level
@@ -27,8 +30,11 @@ if __name__ == "__main__":
 
     # transfer to sgm type
     trans_tok_sgm = trans_tok +  '.sgm'
-    os.system('perl %s zh %s toutiaoAI < %s > %s'
-              % (os.path.join(args.script_dir, 'wrap-xml.perl'), args.source,
+    os.system('perl %s %s %s %s < %s > %s'
+              % (os.path.join(args.script_dir, 'wrap-xml.perl'),
+                 args.language,
+                 args.source,
+                 args.organization,
                  trans_tok, trans_tok_sgm))
 
     # bleu
@@ -46,6 +52,3 @@ if __name__ == "__main__":
     print ret
 
     os.system('rm %s %s' % (trans_tok_sgm, trans_tok))
-
-
-

@@ -79,14 +79,13 @@ def create_vocabulary_lookup_table_numpy(filename):
 class Vocab(object):
     """ Class for vocabulary (feature map) """
 
-    def __init__(self, filename, bpe_codes_file=None, reverse_seq=False):
+    def __init__(self, filename, bpe_codes=None, reverse_seq=False):
         """ Initializes the object.
 
         Args:
             filename: Path to a vocabulary file containing one word per line.
               Each word is mapped to its line number (starting from 0).
-            bpe_codes_file: Path to a BPE code file. If provided, do BPE
-              before feature mapping.
+            bpe_codes: A dict of BPE parameters.
             reverse_seq: Whether to reverse the sequence when encode the words
               to ids.
 
@@ -100,10 +99,10 @@ class Vocab(object):
         self._vocab_size = len(self.vocab_dict)
         self._reverse_seq = reverse_seq
         self._bpe = None
-        if bpe_codes_file and not bpe_codes_file == "":
-            if not gfile.Exists(bpe_codes_file):
-                raise ValueError("bpe_codes_file: {} not exists".format(bpe_codes_file))
-            self._bpe = BPE(bpe_codes_file, vocab=filename)
+        if bpe_codes and "codes" in bpe_codes:
+            if "vocab" not in bpe_codes:
+                bpe_codes["vocab"] = filename
+            self._bpe = BPE(**bpe_codes)
 
     @property
     def sos_id(self):
