@@ -101,6 +101,7 @@ fi
 rm ${TRANS_SGMFILE}
 if [ "$CHAR_LEVEL" -eq "1" ]; then
     rm ${TRANS_PLAINFILE}
+    rm ${REF_SGMFILE}
 fi
 if [ "$DETOKENIZE" -eq "1" ]; then
     rm ${TRANS_PLAINFILE}
