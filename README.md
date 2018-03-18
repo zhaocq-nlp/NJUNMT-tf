@@ -127,6 +127,46 @@ The available FLAGS (or the top levels of yaml configs) for bin.infer are as fol
 - illegal parameters will interrupt the program, so see [sample.yml](https://github.com/zhaocq-nlp/NJUNMT-tf/blob/master/njunmt/example_configs/sample.yml) of more detailed discription for each parameter.
 
 
+## Benchmarks
+
+The benchmark is performed on 1 GTX 1080Ti GPU with predefined configurations:
+
+- `default_configs/adam_loss_decay.yml`
+- `default_configs/default_metrics.yml`
+- `default_configs/default_training_options.yml`
+- `default_configs/seq2seq_cgru.yml`
+
+The datasets are preprocessed using [fetch_wmt2017_ende.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2017_ende.sh) referring to [Edinburgh’s Report](http://statmt.org/wmt17/pdf/WMT39.pdf).
+
+<table>
+  <tr>
+    <th rowspan="2">Dataset</th>
+    <th colspan="2">newstest2016(dev)</th>
+    <th colspan="2">newstest2017</th>
+  </tr>
+  <tr>
+    <td>multi-bleu (tok)</td>
+    <td>mteval (detok)</td>
+    <td>multi-bleu (tok)</td>
+    <td>mteval (detok)</td>
+  </tr>
+  <tr>
+    <td>WMT17 EN-DE</td>
+    <td>29.73</td>
+    <td>29.60</td>
+    <td>21.34</td>
+    <td>22.44</td>
+  </tr>
+  <tr>
+    <td>WMT17 DE-EN</td>
+    <td>33.69</td>
+    <td>33.99</td>
+    <td>27.06</td>
+    <td>28.82</td>
+  </tr>
+</table>
+
+
 ## TODO
 
 The following features remain unimplemented:
