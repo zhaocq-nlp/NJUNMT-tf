@@ -78,6 +78,23 @@ if [ "$CHAR_LEVEL" -eq "1" ]; then
     TRANS_PLAINFILE=${NEW_TRANS_PLAINFILE}
 fi
 
+if [ "$LANGUAGE" != "zh" ]; then
+    if [ "$LANGUAGE" != "en" ]; then
+        if [ "$LANGUAGE" != "de" ]; then
+            echo "Error with language $LANGUAGE."
+            echo "Now this script only accepts en, de, zh."
+            exit 1
+        fi
+    fi
+    NEW_TRANS_PLAINFILE=${TRANS_PLAINFILE}.$((`date +%s`))
+    perl ${SCRIPT_DIR}/detruecase.perl < ${TRANS_PLAINFILE} > ${NEW_TRANS_PLAINFILE}
+    if [ "$DETOKENIZE" -eq "1" ]; then
+        mv ${NEW_TRANS_PLAINFILE} ${TRANS_PLAINFILE}
+    else
+        TRANS_PLAINFILE=${NEW_TRANS_PLAINFILE}
+    fi
+fi
+
 # detokenize
 if [ "$DETOKENIZE" -eq "1" ]; then
     NEW_TRANS_PLAINFILE=${TRANS_PLAINFILE}.detok.$((`date +%s`))
@@ -98,7 +115,6 @@ else
     echo "${BLEU%% *}"
 fi
 
-rm ${TRANS_SGMFILE}
 if [ "$CHAR_LEVEL" -eq "1" ]; then
     rm ${TRANS_PLAINFILE}
     rm ${REF_SGMFILE}
