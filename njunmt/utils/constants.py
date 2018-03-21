@@ -53,7 +53,7 @@ class Constants:
     # learning rate variable name
     LEARNING_RATE_VAR_NAME = "learning_rate"
     # for loss decay
-    LR_ANNEAL_DIV_FACTOR_NAME = "lr_anneal_div_factor"
+    LR_ANNEAL_DIV_FACTOR_NAME = "learning_rate_anneal_div_factor"
 
     # training loss display name
     TRAIN_LOSS_KEY_NAME = "training/loss"

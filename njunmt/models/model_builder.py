@@ -16,17 +16,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 from collections import namedtuple
 
+import tensorflow as tf
+
 import njunmt
-from njunmt.models import SequenceToSequence
 from njunmt.models import EnsembleModel
+from njunmt.training.hooks import build_hooks
+from njunmt.training.optimize import optimize
 from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.constants import Constants
 from njunmt.utils.constants import ModeKeys
-from njunmt.training.optimize import optimize
-from njunmt.training.hooks import build_hooks
+from njunmt.utils.misc import inspect_varname_prefix
+from njunmt.utils.misc import get_model_top_scope_name
 
 
 class EstimatorSpec(
@@ -95,18 +97,6 @@ class EstimatorSpec(
             training_hooks=training_hooks)
 
 
-def _inspect_varname_prefix(var_name):
-    """ Returns the top variable scope name. """
-    # empirical
-    keywords = "/input_symbol_modality"
-    if keywords in var_name:
-        return var_name[:var_name.index(keywords)]
-    keywords = "/symbol_modality_"
-    if keywords in var_name:
-        return var_name[:var_name.index(keywords)]
-    return None
-
-
 def model_fn(
         model_configs,
         mode,
@@ -135,7 +125,8 @@ def model_fn(
     model_str = model_configs["model"]
     if model_str is None:
         model_str = "SequenceToSequence"
-    model_name = name or model_str.split(".")[-1]
+    # model_name = name or model_str.split(".")[-1]
+    model_name = get_model_top_scope_name(model_str, name)
     if verbose:
         tf.logging.info("Create model: {} for {}".format(
             model_str, mode))
@@ -217,7 +208,7 @@ def model_fn_ensemble(
             if var_name.startswith("OptimizeLoss"):
                 continue
             if model_name is None:
-                model_name = _inspect_varname_prefix(var_name)
+                model_name = inspect_varname_prefix(var_name)
             var = tf.contrib.framework.load_variable(model_dir, var_name)
             with tf.variable_scope(Constants.ENSEMBLE_VARNAME_PREFIX + str(index)):
                 var = tf.get_variable(

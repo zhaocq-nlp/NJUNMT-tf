@@ -26,6 +26,7 @@ from tensorflow import gfile
 from tensorflow.python.client import device_lib
 
 from njunmt.utils.constants import Constants
+from njunmt.utils.configurable import ModelConfigs
 
 
 def open_file(filename, encoding="utf-8", mode="r"):
@@ -188,6 +189,44 @@ def label_smoothing(labels, vocab_size, epsilon=0.1):
     return soft_targets, normalizing
 
 
+def get_model_top_scope_name(model_name, problem_name):
+    """ Returns the top scope name of all models.
+
+    Args:
+        model_name: The model string.
+        problem_name: The problem name.
+
+    Returns: A str.
+    """
+    if model_name is None:
+        model_name = "SequenceToSequence"
+    return problem_name or model_name.split(".")[-1]
+
+
+def load_pretrain_model(model_name, pretrain_model_dir, problem_name):
+    """ Loads pretrained model.
+
+    Args:
+        model_name: The name of the model.
+        pretrain_model_dir: The pretrained model dir.
+        problem_name: The problem name.
+    """
+    top_scope_name = get_model_top_scope_name(model_name, problem_name)
+    pt_model_configs = ModelConfigs.load(pretrain_model_dir)
+    pt_model_top_scope_name = get_model_top_scope_name(pt_model_configs["model"], pt_model_configs["problem_name"])
+    tf.logging.info("loading variables from {}".format(pretrain_model_dir))
+    for var_name, _ in tf.contrib.framework.list_variables(pretrain_model_dir):
+        if var_name.startswith("OptimizeLoss"):
+            continue
+        if tf.GraphKeys.GLOBAL_STEP in var_name or "learning_rate" in var_name:
+            continue
+        var = tf.contrib.framework.load_variable(pretrain_model_dir, var_name)
+        with tf.variable_scope(top_scope_name):
+            v = tf.get_variable(name=var_name[len(pt_model_top_scope_name) + 1:],
+                                shape=var.shape, dtype=var.dtype,
+                                initializer=tf.constant_initializer(var))
+
+
 def padding_batch_data(seqs_x, padding_x):
     """ Creates batch data tensor.
 
@@ -285,3 +324,15 @@ def get_labels_files(labels_file):
             ret.append(labels_file + str(idx))
             idx += 1
     return ret
+
+
+def inspect_varname_prefix(var_name):
+    """ Returns the top variable scope name. """
+    # empirical
+    keywords = "/input_symbol_modality"
+    if keywords in var_name:
+        return var_name[:var_name.index(keywords)]
+    keywords = "/symbol_modality_"
+    if keywords in var_name:
+        return var_name[:var_name.index(keywords)]
+    return None

@@ -30,7 +30,9 @@ from njunmt.utils.configurable import parse_params
 from njunmt.utils.configurable import print_params
 from njunmt.utils.configurable import update_eval_metric
 from njunmt.utils.configurable import update_infer_params
+from njunmt.utils.constants import ModeKeys
 from njunmt.utils.metrics import multi_bleu_score_from_file
+from njunmt.utils.misc import load_pretrain_model
 
 
 @six.add_metaclass(ABCMeta)
@@ -104,6 +106,7 @@ class TrainingExperiment(Experiment):
             "save_checkpoint_steps": 1000,
             "train_steps": 10000000,
             "eval_steps": 100,
+            "pretrain_model": None,
             "reverse_target": False,
             "maximum_features_length": None,
             "maximum_labels_length": None,
@@ -133,11 +136,17 @@ class TrainingExperiment(Experiment):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
+        if self._model_configs["train"]["pretrain_model"]:
+            load_pretrain_model(
+                model_name=self._model_configs["model"],
+                pretrain_model_dir=self._model_configs["train"]["pretrain_model"],
+                problem_name=self._model_configs["problem_name"])
 
         estimator_spec = model_fn(model_configs=self._model_configs,
-                                  mode=tf.contrib.learn.ModeKeys.TRAIN,
+                                  mode=ModeKeys.TRAIN,
                                   dataset=dataset,
-                                  name=self._model_configs["problem_name"])
+                                  name=self._model_configs["problem_name"],
+                                  reuse=True if self._model_configs["train"]["pretrain_model"] else None)
         train_op = estimator_spec.train_op
         hooks = estimator_spec.training_hooks
         # build training session
@@ -241,7 +250,7 @@ class InferExperiment(Experiment):
             length_penalty=self._model_configs["infer"]["length_penalty"])
         # build model
         estimator_spec = model_fn(model_configs=self._model_configs,
-                                  mode=tf.contrib.learn.ModeKeys.INFER,
+                                  mode=ModeKeys.INFER,
                                   dataset=dataset,
                                   name=self._model_configs["problem_name"])
         predict_op = estimator_spec.predictions
@@ -266,7 +275,7 @@ class InferExperiment(Experiment):
         overall_start_time = time.time()
 
         for infer_data, param in zip(text_inputter.make_feeding_data(),
-                                       self._model_configs["infer_data"]):
+                                     self._model_configs["infer_data"]):
             tf.logging.info("Infer Source File: {}.".format(param["features_file"]))
             start_time = time.time()
             infer(sess=sess,
@@ -359,7 +368,7 @@ class EvalExperiment(Experiment):
         tf.logging.info("Evaluating using {}".format(metric_str))
         # build model
         estimator_spec = model_fn(model_configs=self._model_configs,
-                                  mode=tf.contrib.learn.ModeKeys.EVAL,
+                                  mode=ModeKeys.EVAL,
                                   dataset=dataset,
                                   name=self._model_configs["problem_name"])
 
@@ -386,7 +395,7 @@ class EvalExperiment(Experiment):
         overall_start_time = time.time()
 
         for eval_data, param in zip(text_inputter.make_feeding_data(in_memory=True),
-                                       self._model_configs["eval_data"]):
+                                    self._model_configs["eval_data"]):
             tf.logging.info("Evaluation Source File: {}.".format(param["features_file"]))
             tf.logging.info("Evaluation Target File: {}.".format(param["labels_file"]))
             start_time = time.time()

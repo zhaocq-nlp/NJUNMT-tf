@@ -126,10 +126,10 @@ def update_train_model_configs(model_configs, tf_flags):
         param_str = getattr(tf_flags, param_name)
         if param_str is None:
             return mc
-        params = {param_name: yaml.load(param_str)}
+        params = yaml.load(param_str)
         if params is None:
             return mc
-        return parse_params(params, model_configs)
+        return deep_merge_dict(model_configs, {param_name: params})
 
     model_configs = update(model_configs, "problem_name")
     model_configs = update(model_configs, "model_dir")
