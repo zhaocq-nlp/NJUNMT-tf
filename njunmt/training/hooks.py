@@ -26,6 +26,7 @@ from tensorflow.python.training import training_util
 
 from njunmt.utils.constants import Constants
 from njunmt.utils.misc import dump_model_analysis
+from njunmt.utils.misc import load_pretrain_model
 from njunmt.utils.expert_utils import StepTimer
 from njunmt.utils.summary_writer import SummaryWriter
 
@@ -46,6 +47,9 @@ def build_hooks(model_configs, distributed_mode=False, is_chief=True):
     hooks.append(CheckpointSaverHook(
         checkpoint_dir=model_configs["model_dir"],
         save_checkpoint_steps=model_configs["train"]["save_checkpoint_steps"],
+        pretrain_model=model_configs["train"]["pretrain_model"],
+        problem_name=model_configs["problem_name"],
+        model_name=model_configs["model"],
         is_chief=is_chief, do_summary=is_chief))
     hooks.append(DisplayHook(
         checkpoint_dir=model_configs["model_dir"],
@@ -97,6 +101,9 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
                  checkpoint_dir,
                  save_checkpoint_steps=1000,
                  saver=None,
+                 pretrain_model=None,
+                 problem_name=None,
+                 model_name="njunmt.models.SequenceToSequence",
                  do_summary=True,
                  is_chief=True):
         """ Initializes the hook.
@@ -105,6 +112,9 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
             checkpoint_dir: A string, base directory for the checkpoint files.
             save_checkpoint_steps: A python integer, save every N steps.
             saver: `Saver` object, used for saving.
+            pretrain_model: The pretrained model dir.
+            problem_name: A string.
+            model_name: The model name.
             do_summary: Whether to save summaries.
             is_chief: Whether this is the chief process.
         """
@@ -114,6 +124,9 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
         self._saver = saver
         self._checkpoint_dir = checkpoint_dir
         self._save_path = os.path.join(checkpoint_dir, Constants.MODEL_CKPT_FILENAME)
+        self._pretrain_model = pretrain_model
+        self._problem_name = problem_name
+        self._model_name = model_name
         # save every n steps
         self._save_checkpoint_steps = save_checkpoint_steps
         # variable for session.run
@@ -131,6 +144,12 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
         self._timer = StepTimer(every_steps=self._save_checkpoint_steps)
         if self._do_summary:
             self._summary_writer = SummaryWriter(self._checkpoint_dir)
+        self._reload_var_ops = None
+        if not saver_lib.latest_checkpoint(self._checkpoint_dir) and self._pretrain_model:
+            self._reload_var_ops = load_pretrain_model(
+                model_name=self._model_name,
+                pretrain_model_dir=self._pretrain_model,
+                problem_name=self._problem_name)
 
     def before_run(self, run_context):
         """ Dumps graphs and loads checkpoint if there exits.
@@ -161,12 +180,16 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
                 self._summary_writer.add_meta_graph(meta_graph_def)
             tf.logging.info("CheckpointSaverHook (before_run): dump graph...")
         checkpoint_path = saver_lib.latest_checkpoint(self._checkpoint_dir)
-        if checkpoint_path and self._first_call:
-            # reloading model
-            self._saver.restore(run_context.session, checkpoint_path)
-            gs = run_context.session.run(self._global_step)
-            tf.logging.info("CheckpointSaverHook (before_run): reloading models and reset global_step={}".format(gs))
-            StepTimer.reset_init_triggered_step(gs)
+        if self._first_call:
+            if checkpoint_path:
+                # reloading model
+                self._saver.restore(run_context.session, checkpoint_path)
+                gs = run_context.session.run(self._global_step)
+                tf.logging.info("CheckpointSaverHook (before_run): reloading models and reset global_step={}".format(gs))
+                StepTimer.reset_init_triggered_step(gs)
+            elif self._reload_var_ops:
+                tf.logging.info("Assign all variables with pretrained variables.")
+                run_context.session.run(self._reload_var_ops)
         self._first_call = False
         self._timer.register_before_run()
         return tf.train.SessionRunArgs(self._global_step)

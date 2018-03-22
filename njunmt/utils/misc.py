@@ -210,21 +210,28 @@ def load_pretrain_model(model_name, pretrain_model_dir, problem_name):
         model_name: The name of the model.
         pretrain_model_dir: The pretrained model dir.
         problem_name: The problem name.
+
+    Returns:
+        A list of assign ops.
     """
     top_scope_name = get_model_top_scope_name(model_name, problem_name)
     pt_model_configs = ModelConfigs.load(pretrain_model_dir)
     pt_model_top_scope_name = get_model_top_scope_name(pt_model_configs["model"], pt_model_configs["problem_name"])
     tf.logging.info("loading variables from {}".format(pretrain_model_dir))
+    assign_op = []
     for var_name, _ in tf.contrib.framework.list_variables(pretrain_model_dir):
         if var_name.startswith("OptimizeLoss"):
             continue
-        if tf.GraphKeys.GLOBAL_STEP in var_name or "learning_rate" in var_name:
+        if tf.GraphKeys.GLOBAL_STEP in var_name or "learning_rate" in var_name or "lr" in var_name:
+            tf.logging.info("Pretrain: ignore {}".format(var_name))
             continue
+        tf.logging.info("Pretrain: reload {}".format(var_name))
         var = tf.contrib.framework.load_variable(pretrain_model_dir, var_name)
-        with tf.variable_scope(top_scope_name):
+        with tf.variable_scope(top_scope_name, reuse=True):
             v = tf.get_variable(name=var_name[len(pt_model_top_scope_name) + 1:],
-                                shape=var.shape, dtype=var.dtype,
-                                initializer=tf.constant_initializer(var))
+                                shape=var.shape, dtype=var.dtype)
+            assign_op.append(v.assign(var))
+    return assign_op
 
 
 def padding_batch_data(seqs_x, padding_x):

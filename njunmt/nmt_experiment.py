@@ -136,17 +136,11 @@ class TrainingExperiment(Experiment):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
-        if self._model_configs["train"]["pretrain_model"]:
-            load_pretrain_model(
-                model_name=self._model_configs["model"],
-                pretrain_model_dir=self._model_configs["train"]["pretrain_model"],
-                problem_name=self._model_configs["problem_name"])
 
         estimator_spec = model_fn(model_configs=self._model_configs,
                                   mode=ModeKeys.TRAIN,
                                   dataset=dataset,
-                                  name=self._model_configs["problem_name"],
-                                  reuse=True if self._model_configs["train"]["pretrain_model"] else None)
+                                  name=self._model_configs["problem_name"])
         train_op = estimator_spec.train_op
         hooks = estimator_spec.training_hooks
         # build training session
