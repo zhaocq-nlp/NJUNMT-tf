@@ -19,6 +19,7 @@ from __future__ import print_function
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -290,6 +291,32 @@ def advanced_log_softmax(logits):
     Returns: The log softmax results.
     """
     return math_ops.log(advanced_softmax(logits))
+
+
+def advanced_reduce_sum(values, values_length, axis):
+    """ Reudces sum at `axis`.
+
+    Args:
+        values: A tensor with shape [batch, time, dim] or [time, batch, dim]
+        values_length: A tensor with shape [batch,]
+        axis: The axis indicating time, 0/1.
+
+    Returns: The reduced tensor with shape [batch, dim]
+    """
+    # [batch_size, time]
+    mask = array_ops.sequence_mask(
+        lengths=values_length,
+        maxlen=array_ops.shape(values)[axis],
+        dtype=dtypes.float32)
+    if axis == 0:
+        mask = array_ops.transpose(mask, perm=[1, 0])
+    masked_values = values * array_ops.expand_dims(mask, axis=2)
+    return math_ops.reduce_sum(masked_values, axis=axis)
+
+
+def advanced_reduce_mean(values, values_length, axis):
+    reduced_sum = advanced_reduce_sum(values, values_length, axis)
+    return reduced_sum / array_ops.expand_dims(math_ops.to_float(values_length), axis=1)
 
 
 def split_last_dimension(x, n):
