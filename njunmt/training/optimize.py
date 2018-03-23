@@ -26,19 +26,21 @@ from njunmt.utils.constants import ModeKeys
 from njunmt.utils.constants import Constants
 
 
-def optimize(loss, opt_params, colocate_gradients_with_ops=False):
+def optimize(loss, opt_params, variables=None, colocate_gradients_with_ops=False):
     """ Minimizes loss.
 
     Args:
         loss: The loss Tensor.
         opt_params: A dictionary of the parameters of the optimizer.
+        variables: A list of variables to optimize or None to use all
+          trainable variables.
         colocate_gradients_with_ops: Argument passed to
           `tf.contrib.layers.optimize_loss`
 
     Returns: The train_op.
     """
     opt = OptimizerWrapper(opt_params)
-    return opt.optimize(loss, colocate_gradients_with_ops)
+    return opt.optimize(loss, variables, colocate_gradients_with_ops)
 
 
 def _get_optimizer(name, **params):
@@ -98,12 +100,13 @@ class OptimizerWrapper(Configurable):
             "optimizer.sync_replicas_to_aggregate": 0,
         }
 
-    def optimize(self, loss, colocate_gradients_with_ops=False):
+    def optimize(self, loss, variables=None, colocate_gradients_with_ops=False):
         """ Creates the optimizer with learning rate decaying, optimizes
         loss and return a train_op.
 
         Args:
             loss: The loss Tensor.
+            variables: A list of variables to optimize or None to use all trainable variables.
             colocate_gradients_with_ops: Argument passed to
               `tf.contrib.layers.optimize_loss`
 
@@ -148,6 +151,7 @@ class OptimizerWrapper(Configurable):
             learning_rate=None,  # self.params["optimizer.learning_rate"],
             learning_rate_decay_fn=None,
             clip_gradients=_clip_gradients if self.params["optimizer.clip_gradients"] > 0. else None,
+            variables=variables,
             optimizer=optimizer,
             summaries=["learning_rate", "loss"],
             colocate_gradients_with_ops=colocate_gradients_with_ops)
