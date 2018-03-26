@@ -41,6 +41,7 @@ from njunmt.utils.metrics import multi_bleu_score
 from njunmt.utils.misc import get_dict_from_collection
 from njunmt.utils.misc import open_file
 from njunmt.utils.summary_writer import SummaryWriter
+from njunmt.tools.tokenizeChinese import to_chinese_char
 
 
 def build_eval_metrics(model_configs, dataset, is_cheif=True, model_name=None):
@@ -354,7 +355,10 @@ class BleuMetricSpec(TextMetricSpec):
         self._references = []
         for rfile in self._dataset.eval_labels_file:
             with open_file(rfile) as fp:
-                self._references.append(fp.readlines())
+                if self._char_level:
+                    self._references.append(to_chinese_char(fp.readlines()))
+                else:
+                    self._references.append(fp.readlines())
         self._references = list(map(list, zip(*self._references)))
         with open_file(self._dataset.eval_features_file) as fp:
             self._sources = fp.readlines()
