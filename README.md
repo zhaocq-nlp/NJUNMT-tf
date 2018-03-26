@@ -141,31 +141,30 @@ The datasets are preprocessed using [fetch_wmt2017_ende.sh](https://github.com/z
 <table>
   <tr>
     <th rowspan="2">Dataset</th>
-    <th colspan="2">newstest2016(dev)</th>
-    <th colspan="2">newstest2017</th>
+    <th colspan="2">multi-bleu (tok) </th>
+    <th colspan="2">mteval (detok) </th>
   </tr>
   <tr>
-    <td>multi-bleu (tok)</td>
-    <td>mteval (detok)</td>
-    <td>multi-bleu (tok)</td>
-    <td>mteval (detok)</td>
+    <td>newstest2016(dev)</td>
+    <td>newstest2017</td>
+    <td>newstest2016(dev)</td>
+    <td>newstest2017</td>
   </tr>
   <tr>
     <td>WMT17 EN-DE</td>
     <td>29.73</td>
-    <td>29.60</td>
     <td>23.89</td>
+    <td>29.60</td>
     <td>23.64</td>
   </tr>
   <tr>
     <td>WMT17 DE-EN</td>
     <td>33.69</td>
-    <td>33.99</td>
     <td>29.26</td>
+    <td>33.99</td>
     <td>29.56</td>
   </tr>
 </table>
-
 
 ## TODO
 
