@@ -1,6 +1,7 @@
 # Network parameters for deep network
 model: njunmt.models.SequenceToSequence
 model_params:
+  fflayers.layer_norm: true
   embedding.dim.source: 512
   embedding.dim.target: 512
   modality.params:
