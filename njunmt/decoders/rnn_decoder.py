@@ -102,9 +102,7 @@ class CondAttentionDecoder(Decoder):
             "attention.params": {},  # Arbitrary attention layer parameters
             "rnn_cell": {
                 "cell_class": "LSTMCell",
-                "cell_params": {
-                    "num_units": 1024
-                },
+                "cell_params": {},
                 "dropout_input_keep_prob": 1.0,
                 "dropout_state_keep_prob": 1.0,
                 "num_layers": 1,
@@ -141,10 +139,10 @@ class CondAttentionDecoder(Decoder):
             attention_bias = getattr(eval(self.params["attention.class"]),
                                      "attention_length_to_bias")(None, attention_length)
         with tf.variable_scope(self._attention.name):
-            projected_attention_keys = fflayer(
-                inputs=attention_values, output_size=self._attention.attention_units,
-                dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
-                activation=None, name="ff_att_keys")
+            projected_attention_keys = fflayer(inputs=attention_values, output_size=self._attention.attention_units,
+                                               activation=None,
+                                               dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
+                                               name="ff_att_keys")
         init_rnn_states = bridge(self._r_rnn_cells.state_size)
         init_cache = initialize_cache(
             decoding_states=init_rnn_states,
@@ -175,15 +173,12 @@ class CondAttentionDecoder(Decoder):
         prev_input = decoder_output.prev_input
         attention_context = decoder_output.attention_context
 
-        logit_lstm = fflayer(cur_decoder_hidden, output_size=self.params["logits_dimension"],
-                             dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"],
-                             activation=None, name="ff_logit_lstm")
-        logit_prev = fflayer(prev_input, output_size=self.params["logits_dimension"],
-                             dropout_input_keep_prob=self.params["dropout_embedding_keep_prob"],
-                             activation=None, name="ff_logit_prev")
-        logit_ctx = fflayer(attention_context, output_size=self.params["logits_dimension"],
-                            dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"],
-                            activation=None, name="ff_logit_ctx")
+        logit_lstm = fflayer(cur_decoder_hidden, output_size=self.params["logits_dimension"], activation=None,
+                             dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"], name="ff_logit_lstm")
+        logit_prev = fflayer(prev_input, output_size=self.params["logits_dimension"], activation=None,
+                             dropout_input_keep_prob=self.params["dropout_embedding_keep_prob"], name="ff_logit_prev")
+        logit_ctx = fflayer(attention_context, output_size=self.params["logits_dimension"], activation=None,
+                            dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"], name="ff_logit_ctx")
         merged_output = tf.tanh(logit_lstm + logit_prev + logit_ctx)
         return merged_output
 
@@ -289,9 +284,7 @@ class AttentionDecoder(Decoder):
             "attention.params": {},  # Arbitrary attention layer parameters
             "rnn_cell": {
                 "cell_class": "LSTMCell",
-                "cell_params": {
-                    "num_units": 1024
-                },
+                "cell_params": {},
                 "dropout_input_keep_prob": 1.0,
                 "dropout_state_keep_prob": 1.0,
                 "num_layers": 1,
@@ -328,10 +321,10 @@ class AttentionDecoder(Decoder):
             attention_bias = getattr(eval(self.params["attention.class"]),
                                      "attention_length_to_bias")(None, attention_length)
         with tf.variable_scope(self._attention.name):
-            projected_attention_keys = fflayer(
-                inputs=attention_values, output_size=self._attention.attention_units,
-                dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
-                activation=None, name="ff_att_keys")
+            projected_attention_keys = fflayer(inputs=attention_values, output_size=self._attention.attention_units,
+                                               activation=None,
+                                               dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
+                                               name="ff_att_keys")
         init_rnn_states = bridge(self._rnn_cells.state_size)
         if self._attention.attention_value_depth > 0:
             init_att_context = tf.zeros([tf.shape(attention_values)[0],
@@ -367,16 +360,14 @@ class AttentionDecoder(Decoder):
         prev_input = decoder_output.prev_input
         attention_context = decoder_output.attention_context
 
-        logit_lstm = fflayer(cur_decoder_hidden, output_size=self.params["logits_dimension"],
-                             dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"],
-                             activation=None, name="ff_logit_lstm")
+        logit_lstm = fflayer(cur_decoder_hidden, output_size=self.params["logits_dimension"], activation=None,
+                             dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"], name="ff_logit_lstm")
         # TODO here to fit old version code
         # logit_prev = fflayer(prev_input, output_size=self.params["logits_dimension"],
         #                      dropout_input_keep_prob=self.params["dropout_embedding_keep_prob"],
         #                      activation=None, name="ff_logit_prev")
-        logit_ctx = fflayer(attention_context, output_size=self.params["logits_dimension"],
-                            dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"],
-                            activation=None, name="ff_logit_ctx")
+        logit_ctx = fflayer(attention_context, output_size=self.params["logits_dimension"], activation=None,
+                            dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"], name="ff_logit_ctx")
         # merged_output = tf.tanh(logit_lstm + logit_prev + logit_ctx)
         merged_output = tf.tanh(logit_lstm + logit_ctx)
         return merged_output
@@ -459,9 +450,7 @@ class SimpleDecoder(Decoder):
         return {
             "rnn_cell": {
                 "cell_class": "LSTMCell",
-                "cell_params": {
-                    "num_units": 1024,
-                },
+                "cell_params": {},
                 "dropout_input_keep_prob": 1.0,
                 "dropout_state_keep_prob": 1.0,
                 "num_layers": 1,
@@ -508,12 +497,10 @@ class SimpleDecoder(Decoder):
         """
         cur_decoder_hidden = decoder_states.cur_decoder_hidden
         prev_input = decoder_states.prev_input
-        logit_lstm = fflayer(cur_decoder_hidden, output_size=self.params["logits_dimension"],
-                             dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"],
-                             activation=None, name="ff_logit_lstm")
-        logit_prev = fflayer(prev_input, output_size=self.params["logits_dimension"],
-                             dropout_input_keep_prob=self.params["dropout_embedding_keep_prob"],
-                             activation=None, name="ff_logit_prev")
+        logit_lstm = fflayer(cur_decoder_hidden, output_size=self.params["logits_dimension"], activation=None,
+                             dropout_input_keep_prob=self.params["dropout_hidden_keep_prob"], name="ff_logit_lstm")
+        logit_prev = fflayer(prev_input, output_size=self.params["logits_dimension"], activation=None,
+                             dropout_input_keep_prob=self.params["dropout_embedding_keep_prob"], name="ff_logit_prev")
         merged_output = tf.tanh(logit_lstm + logit_prev)
         return merged_output
 

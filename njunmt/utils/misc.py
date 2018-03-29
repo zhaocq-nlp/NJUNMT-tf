@@ -343,3 +343,9 @@ def inspect_varname_prefix(var_name):
     if keywords in var_name:
         return var_name[:var_name.index(keywords)]
     return None
+
+
+def set_fflayers_layer_norm(layer_norm=False):
+    """ Set laye norm flag. """
+    from njunmt.layers import common_layers
+    common_layers.FFLAYERS_LAYER_NORM = layer_norm

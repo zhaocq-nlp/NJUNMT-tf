@@ -184,9 +184,12 @@ class Modality(Configurable):
         else:
             scope_name = "softmax"
             var = None
-        logits = fflayer(top_features, output_size=self.top_dimension, handle=var,
-                         activation=None, name=scope_name,
-                         dropout_input_keep_prob=self.params["dropout_logit_keep_prob"])
+        logits = fflayer(top_features,
+                         output_size=self.top_dimension,
+                         handle=var, activation=None,
+                         dropout_input_keep_prob=self.params["dropout_logit_keep_prob"],
+                         followed_by_softmax=True,
+                         name=scope_name)
         return logits
 
     def bottom_simple(self, x, name, reuse, time=None):

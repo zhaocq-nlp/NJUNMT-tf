@@ -1,6 +1,7 @@
 # Network parameters for debugging
 model: njunmt.models.SequenceToSequence
 model_params:
+  fflayers.layer_norm: true # whether to apply layer normalization to all fflayers
   embedding.dim.source: 8
   embedding.dim.target: 8
   modality.params:

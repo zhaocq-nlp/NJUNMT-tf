@@ -31,6 +31,8 @@ from njunmt.utils.configurable import deep_merge_dict
 from njunmt.utils.constants import Constants
 from njunmt.utils.constants import ModeKeys
 from njunmt.utils.beam_search import process_beam_predictions
+from njunmt.utils.misc import set_fflayers_layer_norm
+
 
 # import all bridges
 BRIDGE_CLSS = [
@@ -69,6 +71,7 @@ class SequenceToSequence(Configurable):
         self._vocab_source = vocab_source
         self._vocab_target = vocab_target
         self._verbose = verbose
+        set_fflayers_layer_norm(self.params["fflayers.layer_norm"])
 
     def _create_modalities(self):
         """ Creates source and target modalities.
@@ -99,6 +102,7 @@ class SequenceToSequence(Configurable):
     def default_params():
         """ Returns a dictionary of default parameters of this model. """
         return {
+            "fflayers.layer_norm": False,
             "encoder.class": "njunmt.encoders.rnn_encoder.StackBidirectionalRNNEncoder",
             "encoder.params": {},  # Arbitrary parameters for the encoder
             "bridge.class": "ZeroBridge",

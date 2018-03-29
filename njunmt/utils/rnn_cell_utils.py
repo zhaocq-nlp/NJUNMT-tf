@@ -21,13 +21,14 @@ import sys
 
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell_impl
+from tensorflow.contrib.rnn.python.ops import rnn_cell
 from tensorflow.python.ops.rnn_cell_impl import RNNCell
 
 from njunmt.utils.rnn_cells import StackedRNNCell
 
 # Import all cell classes from Tensorflow
 TF_CELL_CLASSES = [
-                      x for x in rnn_cell_impl.__dict__.values()
+                      x for x in rnn_cell_impl.__dict__.values() + rnn_cell.__dict__.values()
                       # use in-house implemented LSTM cell and GRU cell
                       if inspect.isclass(x) and issubclass(x, RNNCell)]
 for cell_class in TF_CELL_CLASSES:

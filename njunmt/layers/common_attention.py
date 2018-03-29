@@ -151,8 +151,7 @@ class BaseAttention(Configurable):
         """
         _ = cache
         with tf.variable_scope(self.name):
-            query = fflayer(query, output_size=self.attention_units,
-                            activation=None, name="ff_att_query")
+            query = fflayer(query, output_size=self.attention_units, activation=None, name="ff_att_query")
             keys = memory
             if cache is not None and "attention_keys" in cache:
                 keys = cache["attention_keys"]

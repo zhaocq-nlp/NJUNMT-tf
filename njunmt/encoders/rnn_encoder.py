@@ -45,9 +45,7 @@ class StackBidirectionalRNNEncoder(Encoder):
         return {
             "rnn_cell": {
                 "cell_class": "LSTMCell",
-                "cell_params": {
-                    "num_units": 1024,
-                },
+                "cell_params": { },
                 "dropout_input_keep_prob": 1.0,
                 "dropout_state_keep_prob": 1.0,
                 "num_layers": 1
@@ -118,9 +116,7 @@ class UnidirectionalRNNEncoder(Encoder):
         return {
             "rnn_cell": {
                 "cell_class": "LSTMCell",
-                "cell_params": {
-                    "num_units": 1024,
-                },
+                "cell_params": {},
                 "dropout_input_keep_prob": 1.0,
                 "dropout_state_keep_prob": 1.0,
                 "num_layers": 1

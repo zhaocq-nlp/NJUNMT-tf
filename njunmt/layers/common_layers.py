@@ -20,6 +20,8 @@ import math
 import tensorflow as tf
 from njunmt.utils.algebra_ops import linear
 
+FFLAYERS_LAYER_NORM = False
+
 
 def dropout_wrapper(x, keep_prob, seed=None):
     """ A wrapper function for `tf.nn.dropout`
@@ -125,6 +127,10 @@ def fflayer(inputs,
             output_size,
             handle=None,
             activation=None,
+            layer_norm=None,
+            norm_gain=1.0,
+            norm_shift=0.0,
+            followed_by_softmax=False,
             dropout_input_keep_prob=1.0,
             dropout_seed=None,
             bias=True,
@@ -139,6 +145,13 @@ def fflayer(inputs,
         output_size: An integer.
         handle: A Tensor. If provided, use it as the weight matrix.
         activation: The activation function.
+        layer_norm: Whether to apply layer normalization.
+        followed_by_softmax: Whether it follows a softmax funciton. If True,
+          no layer normalization will be applied.
+        norm_gain: float, The layer normalization gain initial value. If
+          `layer_norm` has been set to `False`, this argument will be ignored.
+        norm_shift: float, The layer normalization shift initial value. If
+          `layer_norm` has been set to `False`, this argument will be ignored.
         dropout_input_keep_prob: A float, the probability that each
           element in `inputs` is kept.
         dropout_seed: A Python integer. Used to create random seeds.
@@ -149,6 +162,8 @@ def fflayer(inputs,
 
     Returns: A Tensor of shape [..., `output_size`]
     """
+    if layer_norm is None:
+        layer_norm = FFLAYERS_LAYER_NORM
     scope = tf.get_variable_scope()
     with tf.variable_scope(name or scope):
         inputs = dropout_wrapper(
@@ -161,7 +176,8 @@ def fflayer(inputs,
                         kernel_name="W", bias_name="b",
                         kernel_initializer=kernel_initializer,
                         bias_initializer=bias_initializer)
-
+        if layer_norm and not followed_by_softmax:
+            preact = norm_layer(preact, norm_gain, norm_shift)
     if activation is None:
         return preact
     return activation(preact)
