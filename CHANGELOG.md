@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - WMT2017 EN<->DE benchmark.
 - Load pretrained model.
+- Layer normalization for fflayer and LayerNormLSTMCell
 
 ### Changed
 - Default loss function.
