@@ -373,20 +373,13 @@ class ParallelTextInputter(TextInputter):
         data = []
         batch_data_idx = 0
         while batch_data_idx < len(ss_buf):
-            x, len_x = padding_batch_data(
-                ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                self._features_padding)
-            y, len_y = padding_batch_data(
-                tt_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                self._labels_padding)
-            data.append({
-                "feature_ids": x,
-                "label_ids": y,
-                "feed_dict": {
-                    self.input_fields[Constants.FEATURE_IDS_NAME]: x,
-                    self.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x,
-                    self.input_fields[Constants.LABEL_IDS_NAME]: y,
-                    self.input_fields[Constants.LABEL_LENGTH_NAME]: len_y}})
+            data.append(
+                pack_feed_dict(
+                    name_prefixs=[Constants.FEATURE_NAME_PREFIX, Constants.LABEL_NAME_PREFIX],
+                    origin_datas=[ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
+                                  tt_buf[batch_data_idx: batch_data_idx + self._batch_size]],
+                    paddings=[self._features_padding, self._labels_padding],
+                    input_fields=self.input_fields))
             batch_data_idx += self._batch_size
         return data
 
@@ -497,18 +490,11 @@ class ParallelTextInputter(TextInputter):
                 self._end_of_data = False
                 self._reset()
                 raise StopIteration
-            return {"feature_ids": features,
-                    "label_ids": labels,
-                    "feed_dict": self._make_inputs(features, labels)}
-
-        def _make_inputs(self, features, labels):
-            x, len_x = padding_batch_data(features, self._parent._features_padding)
-            y, len_y = padding_batch_data(labels, self._parent._labels_padding)
-            return {
-                self._parent.input_fields[Constants.FEATURE_IDS_NAME]: x,
-                self._parent.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x,
-                self._parent.input_fields[Constants.LABEL_IDS_NAME]: y,
-                self._parent.input_fields[Constants.LABEL_LENGTH_NAME]: len_y}
+            return pack_feed_dict(
+                name_prefixs=[Constants.FEATURE_NAME_PREFIX, Constants.LABEL_NAME_PREFIX],
+                origin_datas=[features, labels],
+                paddings=[self._parent._features_padding, self._parent._labels_padding],
+                input_fields=self._parent.input_fields)
 
         def _shuffle_and_reopen(self):
             """ shuffle features & labels file. """
