@@ -23,6 +23,7 @@ import six
 import tensorflow as tf
 
 from njunmt.utils.constants import Constants
+from njunmt.utils.constants import concat_name
 from njunmt.utils.misc import open_file, close_file
 from njunmt.utils.misc import shuffle_data
 from njunmt.utils.misc import padding_batch_data
@@ -69,6 +70,33 @@ def do_bucketing(pivot, args):
     for ele in args:
         _args.append([ele[i] for i in tidx])
     return _pivot, _args
+
+
+def pack_feed_dict(name_prefixs, origin_datas, paddings, input_fields):
+    """
+
+    Args:
+        name_prefixs: A prefix string of a list of strings.
+        origin_datas: Data list or a list of data lists.
+        paddings: A padding id or a list of padding ids.
+        input_fields: The input fieds dict.
+
+    Returns: A dict for while loop.
+    """
+    data = dict()
+    data["feed_dict"] = dict()
+
+    def map_fn(n, d, p):
+        x, x_len = padding_batch_data(d, p)
+        data[concat_name(n, Constants.IDS_NAME)] = x
+        data["feed_dict"][input_fields[concat_name(n, Constants.IDS_NAME)]] = x
+        data["feed_dict"][input_fields[concat_name(n, Constants.LENGTH_NAME)]] = x_len
+
+    if isinstance(name_prefixs, six.string_types):
+        map_fn(name_prefixs, origin_datas, paddings)
+    else:
+        [map_fn(n, d, p) for n, d, p in zip(name_prefixs, origin_datas, paddings)]
+    return data
 
 
 @six.add_metaclass(ABCMeta)
@@ -148,21 +176,16 @@ class TextLineInputter(TextInputter):
         close_file(features)
         data = []
         batch_data_idx = 0
+        name_prefix = Constants.FEATURE_NAME_PREFIX \
+            if "features" in self._data_field_name else Constants.LABEL_NAME_PREFIX
+
         while batch_data_idx < len(ss_buf):
-            x, len_x = padding_batch_data(
-                ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                self._padding)
+            data.append(pack_feed_dict(
+                name_prefixs=name_prefix,
+                origin_datas=ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
+                paddings=self._padding,
+                input_fields=self.input_fields))
             batch_data_idx += self._batch_size
-            if "features" in self._data_field_name:
-                data.append({"feature_ids": x,
-                             "feed_dict": {
-                                 self.input_fields[Constants.FEATURE_IDS_NAME]: x,
-                                 self.input_fields[Constants.FEATURE_LENGTH_NAME]: len_x}})
-            else:
-                data.append({"label_ids": x,
-                             "feed_dict": {
-                                 self.input_fields[Constants.LABEL_IDS_NAME]: x,
-                                 self.input_fields[Constants.LABEL_LENGTH_NAME]: len_x}})
         return data
 
     def make_feeding_data(self, maximum_length=None):

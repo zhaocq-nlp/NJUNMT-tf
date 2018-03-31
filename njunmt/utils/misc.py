@@ -25,8 +25,8 @@ import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.client import device_lib
 
-from njunmt.utils.constants import Constants
 from njunmt.utils.configurable import ModelConfigs
+from njunmt.utils.constants import Constants
 
 
 def open_file(filename, encoding="utf-8", mode="r"):

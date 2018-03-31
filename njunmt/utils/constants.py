@@ -21,6 +21,11 @@ import tensorflow as tf
 ModeKeys = tf.contrib.learn.ModeKeys
 
 
+def concat_name(prefix, name):
+    """ Returns the concatenation of `prefix` and `name`. """
+    return prefix + "_" + name
+
+
 class Constants:
     def __init__(self):
         raise OSError("class Constants can not be instantiated.")
@@ -62,10 +67,14 @@ class Constants:
     DISPLAY_VALUE_COLLECTION_NAME = "display_tensors_value"
 
     # default placeholders
-    FEATURE_IDS_NAME = "feature_ids"
-    FEATURE_LENGTH_NAME = "feature_length"
-    LABEL_IDS_NAME = "label_ids"
-    LABEL_LENGTH_NAME = "label_length"
+    FEATURE_NAME_PREFIX = "feature"
+    LABEL_NAME_PREFIX = "label"
+    IDS_NAME = "ids"
+    LENGTH_NAME = "length"
+    FEATURE_IDS_NAME = concat_name(FEATURE_NAME_PREFIX, IDS_NAME)
+    FEATURE_LENGTH_NAME = concat_name(FEATURE_NAME_PREFIX, LENGTH_NAME)
+    LABEL_IDS_NAME = concat_name(LABEL_NAME_PREFIX, IDS_NAME)
+    LABEL_LENGTH_NAME = concat_name(LABEL_NAME_PREFIX, LENGTH_NAME)
 
     # verbose prefix for training hooks
     HOOK_VERBOSE_PREFIX = " ---hook order: "
