@@ -119,7 +119,8 @@ class EnsembleExperiment(Experiment):
             if param["labels_file"] is not None:
                 bleu_score = multi_bleu_score_from_file(
                     hypothesis_file=param["output_file"],
-                    references_files=param["labels_file"])
+                    references_files=param["labels_file"],
+                    char_level=self._model_configs["infer"]["char_level"])
                 tf.logging.info("BLEU score (%s): %.2f"
                                 % (param["features_file"], bleu_score))
         tf.logging.info("Total Elapsed Time: %s" % str(time.time() - overall_start_time))

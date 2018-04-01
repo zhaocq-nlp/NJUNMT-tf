@@ -24,6 +24,7 @@ from njunmt.utils.bleu import corpus_bleu
 from njunmt.utils.misc import open_file
 from njunmt.utils.misc import get_labels_files
 from njunmt.utils.misc import deprecated
+from njunmt.tools.tokenizeChinese import to_chinese_char
 
 
 @deprecated
@@ -76,13 +77,17 @@ def multi_bleu_score(hypothesis, references):
     return bleu * 100
 
 
-def multi_bleu_score_from_file(hypothesis_file, references_files):
+def multi_bleu_score_from_file(
+        hypothesis_file,
+        references_files,
+        char_level=False):
     """ Computes corpus-level BLEU from hypothesis file
       and reference file(s).
 
     Args:
         hypothesis_file: A string.
         references_files: A string. The name of reference file or the prefix.
+        char_level: Whether evaluate at char-level (for Chinese only).
     Returns: A float.
     """
     with open_file(hypothesis_file) as fp:
@@ -90,6 +95,9 @@ def multi_bleu_score_from_file(hypothesis_file, references_files):
     references = []
     for ref_file in get_labels_files(references_files):
         with open_file(ref_file) as fp:
-            references.append(fp.readlines())
+            if char_level:
+                references.append((to_chinese_char(fp.readlines())))
+            else:
+                references.append(fp.readlines())
     references = list(map(list, zip(*references)))
     return multi_bleu_score(hypothesis, references)
