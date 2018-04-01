@@ -71,11 +71,10 @@ class SequenceToSequence(Configurable):
         self._vocab_source = vocab_source
         self._vocab_target = vocab_target
         self._verbose = verbose
-        self._input_fields = SequenceToSequence.__create_input_fields(self.mode)
+        self._input_fields = None
         set_fflayers_layer_norm(self.params["fflayers.layer_norm"])
 
-    @staticmethod
-    def __create_input_fields(mode):
+    def _create_input_fields(self):
         """ Creates tf placeholders and add input data status to tf
           collections for displaying.
 
@@ -91,7 +90,7 @@ class SequenceToSequence(Configurable):
             name="{}_{}".format(Constants.FEATURE_LENGTH_NAME, SequenceToSequence.__MODEL_COUNTER - 1))
         inp[Constants.FEATURE_IDS_NAME] = feature_ids
         inp[Constants.FEATURE_LENGTH_NAME] = feature_length
-        if mode == ModeKeys.INFER:
+        if self.mode == ModeKeys.INFER:
             return inp
 
         label_ids = tf.placeholder(
@@ -102,10 +101,10 @@ class SequenceToSequence(Configurable):
             name="{}_{}".format(Constants.LABEL_LENGTH_NAME, SequenceToSequence.__MODEL_COUNTER - 1))
         inp[Constants.LABEL_IDS_NAME] = label_ids
         inp[Constants.LABEL_LENGTH_NAME] = label_length
-        if mode == ModeKeys.EVAL:
+        if self.mode == ModeKeys.EVAL:
             return inp
 
-        assert mode == ModeKeys.TRAIN
+        assert self.mode == ModeKeys.TRAIN
         feature_nonpadding_tokens_num = tf.reduce_sum(feature_length)
         feature_shape = tf.shape(feature_ids)
         feature_total_tokens_num = feature_shape[0] * feature_shape[1]
@@ -130,9 +129,15 @@ class SequenceToSequence(Configurable):
 
     @property
     def input_fields(self):
+        """ Returns the input_fields. """
         if self._input_fields is None:
-            self._input_fields = SequenceToSequence.__create_input_fields(self.mode)
+            self._input_fields = self._create_input_fields()
         return self._input_fields
+
+    @input_fields.setter
+    def input_fields(self, val):
+        """ Resets the input_fields property. """
+        self._input_fields = val
 
     def _create_modalities(self):
         """ Creates source and target modalities.
@@ -197,14 +202,19 @@ class SequenceToSequence(Configurable):
         else:
             raise ValueError("Unrecognized initializer: {}".format(self.params["initializer"]))
 
-    def build(self):
+    def build(self, input_fields=None):
         """ Builds the sequence-to-sequence model.
 
         This function calls many inner functions to build each component
         of the model.
 
+        Args:
+            input_fields: A dictionary of placeholders.
+
         Returns: Model output. See _pack_output() for more details.
         """
+        if input_fields is not None:
+            self.input_fields = input_fields
         with tf.variable_scope(self._name, initializer=self.get_variable_initializer()):
             input_modality, target_modality = self._create_modalities()
             encoder = self._create_encoder()

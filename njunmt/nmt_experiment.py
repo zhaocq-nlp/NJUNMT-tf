@@ -32,7 +32,6 @@ from njunmt.utils.configurable import update_eval_metric
 from njunmt.utils.configurable import update_infer_params
 from njunmt.utils.constants import ModeKeys
 from njunmt.utils.metrics import multi_bleu_score_from_file
-from njunmt.utils.misc import load_pretrain_model
 
 
 @six.add_metaclass(ABCMeta)

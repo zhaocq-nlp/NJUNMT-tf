@@ -100,7 +100,7 @@ class EnsembleExperiment(Experiment):
         tf.logging.info("Start inference.")
         overall_start_time = time.time()
 
-        for feeding_data, param in zip(text_inputter.make_feeding_data(),
+        for feeding_data, param in zip(text_inputter.make_feeding_data(estimator_spec.input_fields),
                                        self._model_configs["infer_data"]):
             tf.logging.info("Infer Source Features File: {}.".format(param["features_file"]))
             start_time = time.time()

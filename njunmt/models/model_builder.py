@@ -33,8 +33,8 @@ from njunmt.utils.misc import get_model_top_scope_name
 
 class EstimatorSpec(
     namedtuple('EstimatorSpec', ['input_fields',
-        'predictions', 'loss', 'train_op',
-        'training_chief_hooks', 'training_hooks'])):
+                                 'predictions', 'loss', 'train_op',
+                                 'training_chief_hooks', 'training_hooks'])):
     """ Defines a collection of operations and objects
     returned by `model_fn`.
 
@@ -242,8 +242,8 @@ def model_fn_ensemble(
         inference_options=inference_options)
     with tf.variable_scope("", reuse=True):
         predictions = ensemble_model.build(
-            input_fields=dataset.input_fields, base_models=models,
-            vocab_target=dataset.vocab_target)
+            base_models=models, vocab_target=dataset.vocab_target)
     return EstimatorSpec(
         ModeKeys.INFER,
+        input_fields=ensemble_model.input_fields,
         predictions=predictions)

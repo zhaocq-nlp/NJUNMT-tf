@@ -197,6 +197,7 @@ class EnsembleModel(object):
         self._beam_size = inference_options["beam_size"]
         self._length_penalty = inference_options["length_penalty"]
         self._maximum_labels_length = inference_options["maximum_labels_length"]
+        self._input_fields = None
 
     def get_ensemble_weights(self, num_models):
         """ Creates ensemble weights from `weight_scheme`.
@@ -217,11 +218,20 @@ class EnsembleModel(object):
         raise NotImplementedError("This weight scheme is not implemented: {}."
                                   .format(self._weight_scheme))
 
-    def build(self, input_fields, base_models, vocab_target):
+    @property
+    def input_fields(self):
+        """ Returns the input_fields. """
+        return self._input_fields
+
+    @input_fields.setter
+    def input_fields(self, val):
+        """ Resets the input_fields property. """
+        self._input_fields = val
+
+    def build(self, base_models, vocab_target):
         """ Builds the ensemble model.
 
         Args:
-            input_fields: A dictionary of placeholders.
             base_models: A list of `BaseSeq2Seq` instances.
             vocab_target: An instance of `Vocab`.
 
@@ -236,11 +246,13 @@ class EnsembleModel(object):
             with tf.variable_scope(
                             Constants.ENSEMBLE_VARNAME_PREFIX + str(index)):
                 with tf.variable_scope(model.name):
+                    if self.input_fields is None:
+                        self.input_fields = model._create_input_fields()
+                    model.input_fields = self.input_fields
                     input_modality, target_modality = model._create_modalities()
                     encoder = model._create_encoder()
                     encoder_output = model._encode(
-                        encoder=encoder, input_modality=input_modality,
-                        input_fields=input_fields)
+                        encoder=encoder, input_modality=input_modality)
                     bridge = model._create_bridge(encoder_output)
                     decoder = model._create_decoder()
                     vs_name = tf.get_variable_scope().name
@@ -253,7 +265,7 @@ class EnsembleModel(object):
 
         helper = BeamFeedback(
             vocab=vocab_target,
-            batch_size=tf.shape(input_fields[Constants.FEATURE_IDS_NAME])[0],
+            batch_size=tf.shape(self.input_fields[Constants.FEATURE_IDS_NAME])[0],
             maximum_labels_length=self._maximum_labels_length,
             beam_size=self._beam_size,
             alpha=self._length_penalty,
@@ -269,5 +281,5 @@ class EnsembleModel(object):
             decoding_result=decoding_result,
             beam_size=self._beam_size,
             alpha=self._length_penalty)
-        predict_out["source"] = input_fields[Constants.FEATURE_IDS_NAME]
+        predict_out["source"] = self.input_fields[Constants.FEATURE_IDS_NAME]
         return predict_out
