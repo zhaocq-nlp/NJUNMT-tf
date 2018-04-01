@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Process beam results on GPU.
 - Replace multi-bleu.perl with an equivalent python version.
 - Replace model_analysis APIs with tf.profiler.
+- Move `input_fields` from class Dataset to class SequenceToSequence.
 
 ### Removed
 - Configuration: ``multi_bleu_script`` and ``tokenize_scropt``.

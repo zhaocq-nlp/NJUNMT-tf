@@ -156,6 +156,7 @@ class TrainingExperiment(Experiment):
             self._model_configs["train"]["batch_tokens_size"],
             self._model_configs["train"]["shuffle_every_epoch"])
         train_data = train_text_inputter.make_feeding_data(
+            input_fields=estimator_spec.input_fields,
             maximum_features_length=self._model_configs["train"]["maximum_features_length"],
             maximum_labels_length=self._model_configs["train"]["maximum_labels_length"])
         eidx = 0
@@ -268,8 +269,9 @@ class InferExperiment(Experiment):
         tf.logging.info("Start inference.")
         overall_start_time = time.time()
 
-        for infer_data, param in zip(text_inputter.make_feeding_data(),
-                                     self._model_configs["infer_data"]):
+        for infer_data, param in zip(text_inputter.make_feeding_data(
+                input_fields=estimator_spec.input_fields),
+                self._model_configs["infer_data"]):
             tf.logging.info("Infer Source File: {}.".format(param["features_file"]))
             start_time = time.time()
             infer(sess=sess,
@@ -388,8 +390,9 @@ class EvalExperiment(Experiment):
         tf.logging.info("Start evaluation.")
         overall_start_time = time.time()
 
-        for eval_data, param in zip(text_inputter.make_feeding_data(in_memory=True),
-                                    self._model_configs["eval_data"]):
+        for eval_data, param in zip(text_inputter.make_feeding_data(
+                input_fields=estimator_spec.input_fields, in_memory=True),
+                self._model_configs["eval_data"]):
             tf.logging.info("Evaluation Source File: {}.".format(param["features_file"]))
             tf.logging.info("Evaluation Target File: {}.".format(param["labels_file"]))
             start_time = time.time()

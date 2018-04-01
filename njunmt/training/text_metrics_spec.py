@@ -196,7 +196,6 @@ class LossMetricSpec(TextMetricSpec):
             batch_tokens_size=None,
             shuffle_every_epoch=None,
             bucketing=True)
-        self._eval_feeding_data = text_inputter.make_feeding_data(in_memory=True)
         estimator_spec = model_fn(
             model_configs=self._model_configs,
             mode=ModeKeys.EVAL,
@@ -204,6 +203,8 @@ class LossMetricSpec(TextMetricSpec):
             name=self._model_name,
             reuse=True,
             verbose=False)
+        self._eval_feeding_data = text_inputter.make_feeding_data(
+            input_fields=estimator_spec.input_fields, in_memory=True)
         self._loss_op = estimator_spec.loss
         # for learning decay decay
         self._half_lr = False
@@ -332,11 +333,6 @@ class BleuMetricSpec(TextMetricSpec):
         Builds the model with reuse=True, mode=EVAL and preprocesses
         data file(s).
         """
-        text_inputter = TextLineInputter(
-            dataset=self._dataset,
-            data_field_name="eval_features_file",
-            batch_size=self._batch_size)
-        self._infer_data = text_inputter.make_feeding_data()
         self._model_configs = update_infer_params(  # update inference parameters
             self._model_configs,
             beam_size=self._beam_size,
@@ -346,6 +342,12 @@ class BleuMetricSpec(TextMetricSpec):
                                   mode=ModeKeys.INFER, dataset=self._dataset,
                                   name=self._model_name, reuse=True, verbose=False)
         self._predict_ops = estimator_spec.predictions
+        text_inputter = TextLineInputter(
+            dataset=self._dataset,
+            data_field_name="eval_features_file",
+            batch_size=self._batch_size)
+        self._infer_data = text_inputter.make_feeding_data(
+            input_fields=estimator_spec.input_fields)
         tmp_trans_dir = os.path.join(self._model_configs["model_dir"], Constants.TMP_TRANS_DIRNAME)
         if not gfile.Exists(tmp_trans_dir):
             gfile.MakeDirs(tmp_trans_dir)

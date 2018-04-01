@@ -151,15 +151,16 @@ class TextLineInputter(TextInputter):
         else:
             self._preprocessing_fn = lambda x: dataset.vocab_target.convert_to_idlist(x)
             self._padding = dataset.vocab_target.pad_id
-        self.input_fields = dataset.input_fields
 
     def _make_feeding_data_from(self,
                                 filename,
+                                input_fields,
                                 maximum_length=None):
         """ Processes the data file and return an iterable instance for loop.
 
         Args:
             filename: A specific data file.
+            input_fields: A dict of placeholders.
             maximum_length: The maximum length of symbols (especially
               after BPE is applied). If provided symbols of one sentence exceeding
               this value will be ignore.
@@ -184,15 +185,16 @@ class TextLineInputter(TextInputter):
                 name_prefixs=name_prefix,
                 origin_datas=ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
                 paddings=self._padding,
-                input_fields=self.input_fields))
+                input_fields=input_fields))
             batch_data_idx += self._batch_size
         return data
 
-    def make_feeding_data(self, maximum_length=None):
+    def make_feeding_data(self, input_fields, maximum_length=None):
         """ Processes the data file(s) and return an iterable
         instance for loop.
 
         Args:
+            input_fields: A dict of placeholders.
             maximum_length: The maximum length of symbols (especially
               after BPE is applied). If provided symbols of one sentence exceeding
               this value will be ignore.
@@ -202,9 +204,9 @@ class TextLineInputter(TextInputter):
                    in the constructor.
         """
         if isinstance(self._data_files, list):
-            return [self._make_feeding_data_from(filename, maximum_length)
+            return [self._make_feeding_data_from(filename, input_fields, maximum_length)
                     for filename in self._data_files]
-        return self._make_feeding_data_from(self._data_files, maximum_length)
+        return self._make_feeding_data_from(self._data_files, input_fields, maximum_length)
 
 
 class ParallelTextInputter(TextInputter):
@@ -269,9 +271,9 @@ class ParallelTextInputter(TextInputter):
         self._labels_preprocessing_fn = lambda x: dataset.vocab_target.convert_to_idlist(x)
         self._features_padding = dataset.vocab_source.pad_id
         self._labels_padding = dataset.vocab_target.pad_id
-        self.input_fields = dataset.input_fields
 
     def make_feeding_data(self,
+                          input_fields,
                           maximum_features_length=None,
                           maximum_labels_length=None,
                           in_memory=False):
@@ -279,6 +281,7 @@ class ParallelTextInputter(TextInputter):
               instance for loop.
 
         Args:
+            input_fields: A dict of placeholders.
             maximum_features_length: The maximum length of symbols (especially
               after BPE is applied). If provided symbols of one sentence exceeding
               this value will be ignore.
@@ -292,17 +295,19 @@ class ParallelTextInputter(TextInputter):
         if self._features_file is None or self._labels_file is None:
             raise ValueError("Both _features_file and _labels_file should be provided.")
         if isinstance(self._features_file, list):
-            return [self._make_feeding_data(f, l, maximum_features_length,
+            return [self._make_feeding_data(f, l, input_fields,
+                                            maximum_features_length,
                                             maximum_labels_length, in_memory)
                     for f, l in zip(self._features_file, self._labels_file)]
         return self._make_feeding_data(
             self._features_file, self._labels_file,
-            maximum_features_length, maximum_labels_length,
-            in_memory)
+            input_fields, maximum_features_length,
+            maximum_labels_length, in_memory)
 
     def _make_feeding_data(self,
                            features_file,
                            labels_file,
+                           input_fields,
                            maximum_features_length=None,
                            maximum_labels_length=None,
                            in_memory=False):
@@ -312,6 +317,7 @@ class ParallelTextInputter(TextInputter):
         Args:
             features_file: The path of features file.
             labels_file: The path of labels file.
+            input_fields: A dict of placeholders.
             maximum_features_length: The maximum length of feature symbols (especially
               after BPE is applied) . If provided, the number of symbols of one sentence
               exceeding this value will be ignore.
@@ -326,15 +332,17 @@ class ParallelTextInputter(TextInputter):
             raise ValueError("Both features_file and labels_file should be provided.")
         if in_memory:
             self._SmallParallelData(
-                features_file, labels_file,
+                features_file, labels_file, input_fields,
                 maximum_features_length, maximum_labels_length)
         return self._BigParallelData(
             self, features_file, labels_file,
-            maximum_features_length, maximum_labels_length)
+            input_fields, maximum_features_length,
+            maximum_labels_length)
 
     def _SmallParallelData(self,
                            features_file,
                            labels_file,
+                           input_fields,
                            maximum_features_length=None,
                            maximum_labels_length=None):
         """ Function for reading small scale parallel data for evaluation.
@@ -342,6 +350,7 @@ class ParallelTextInputter(TextInputter):
         Args:
             features_file: The path of features file.
             labels_file: The path of labels file.
+            input_fields: A dict of placeholders.
             maximum_features_length: The maximum length of feature symbols (especially
               after BPE is applied) . If provided, the number of symbols of one sentence
               exceeding this value will be ignore.
@@ -379,7 +388,7 @@ class ParallelTextInputter(TextInputter):
                     origin_datas=[ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
                                   tt_buf[batch_data_idx: batch_data_idx + self._batch_size]],
                     paddings=[self._features_padding, self._labels_padding],
-                    input_fields=self.input_fields))
+                    input_fields=input_fields))
             batch_data_idx += self._batch_size
         return data
 
@@ -390,6 +399,7 @@ class ParallelTextInputter(TextInputter):
                      parent,
                      features_file,
                      labels_file,
+                     input_fields,
                      maximum_features_length=None,
                      maximum_labels_length=None):
             """ Initializes.
@@ -398,6 +408,7 @@ class ParallelTextInputter(TextInputter):
                 parent: A `ParallelTextInputter` object.
                 features_file: The path of features file.
                 labels_file: The path of labels file.
+                input_fields: A dict of placeholders.
                 maximum_features_length: The maximum length of feature symbols (especially
                   after BPE is applied) . If provided, the number of symbols of one sentence
                   exceeding this value will be ignore.
@@ -417,6 +428,7 @@ class ParallelTextInputter(TextInputter):
             self._features_len_buffer = []
             self._labels_len_buffer = []
             self._end_of_data = False
+            self._input_fields = input_fields
 
         def __iter__(self):
             return self
@@ -494,7 +506,7 @@ class ParallelTextInputter(TextInputter):
                 name_prefixs=[Constants.FEATURE_NAME_PREFIX, Constants.LABEL_NAME_PREFIX],
                 origin_datas=[features, labels],
                 paddings=[self._parent._features_padding, self._parent._labels_padding],
-                input_fields=self._parent.input_fields)
+                input_fields=self._input_fields)
 
         def _shuffle_and_reopen(self):
             """ shuffle features & labels file. """

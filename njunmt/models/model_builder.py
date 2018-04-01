@@ -32,7 +32,7 @@ from njunmt.utils.misc import get_model_top_scope_name
 
 
 class EstimatorSpec(
-    namedtuple('EstimatorSpec', [
+    namedtuple('EstimatorSpec', ['input_fields',
         'predictions', 'loss', 'train_op',
         'training_chief_hooks', 'training_hooks'])):
     """ Defines a collection of operations and objects
@@ -43,6 +43,7 @@ class EstimatorSpec(
 
     def __new__(cls,
                 mode,
+                input_fields=None,
                 predictions=None,
                 loss=None,
                 train_op=None,
@@ -56,6 +57,7 @@ class EstimatorSpec(
         * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
         Args:
+            input_fields: A dict of placeholders.
             mode: A `ModeKeys`. Specifies if this is training, evaluation or
               inference.
             predictions: A dict of Tensor for inference.
@@ -72,6 +74,8 @@ class EstimatorSpec(
             ValueError: If validation fails.
             TypeError: If any of the arguments is not the expected type.
         """
+        if input_fields is None:
+            raise ValueError("Missing input_fields")
         if predictions is None and mode == ModeKeys.INFER:
             raise ValueError("Missing predictions")
         if loss is None:
@@ -90,6 +94,7 @@ class EstimatorSpec(
                         hook))
         return super(EstimatorSpec, cls).__new__(
             cls,
+            input_fields=input_fields,
             predictions=predictions,
             loss=loss,
             train_op=train_op,
@@ -140,7 +145,7 @@ def model_fn(
     # model_template_builder = tf.make_template("", model.build, create_scope_now_=False)
     # model_output = model_template_builder(dataset.input_fields)
     with tf.variable_scope("", reuse=reuse):
-        model_output = model.build(dataset.input_fields)
+        model_output = model.build()
     # training mode
     if mode == ModeKeys.TRAIN:
         loss = model_output
@@ -156,6 +161,7 @@ def model_fn(
                                         is_cheif=is_chief, model_name=model_name))
         return EstimatorSpec(
             mode,
+            input_fields=model.input_fields,
             loss=loss,
             train_op=train_op,
             training_hooks=hooks,
@@ -166,6 +172,7 @@ def model_fn(
         loss = model_output[0]
         return EstimatorSpec(
             mode,
+            input_fields=model.input_fields,
             loss=loss,
             # attentions for force decoding
             predictions=model_output[1])
@@ -173,6 +180,7 @@ def model_fn(
     assert mode == ModeKeys.INFER
     return EstimatorSpec(
         mode,
+        input_fields=model.input_fields,
         predictions=model_output)
 
 
