@@ -88,7 +88,7 @@ def pack_feed_dict(name_prefixs, origin_datas, paddings, input_fields):
 
     def map_fn(n, d, p):
         x, x_len = padding_batch_data(d, p)
-        data[concat_name(n, Constants.IDS_NAME)] = x
+        data[concat_name(n, Constants.IDS_NAME)] = d
         data["feed_dict"][input_fields[concat_name(n, Constants.IDS_NAME)]] = x
         data["feed_dict"][input_fields[concat_name(n, Constants.LENGTH_NAME)]] = x_len
 
