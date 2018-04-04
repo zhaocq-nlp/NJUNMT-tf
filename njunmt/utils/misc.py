@@ -27,6 +27,7 @@ from tensorflow.python.client import device_lib
 
 from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.constants import Constants
+from njunmt.utils.constants import concat_name
 
 
 def open_file(filename, encoding="utf-8", mode="r"):
@@ -53,6 +54,24 @@ def close_file(fp):
     """
     if not fp.closed:
         fp.close()
+
+
+def compute_non_padding_num(input_fields, name_prefix):
+    """ Computes non-padding num and total tokens num.
+
+    Args:
+        input_fields: A dict of placeholders.
+        name_prefix: The key prefix name, Constants.FEATURE_NAME_PREFIX
+          or Constants.LABEL_NAME_PREFIX
+
+    Returns: A tuple (non-padding tokens num, total tokens num)
+    """
+    length = input_fields[concat_name(name_prefix, Constants.LENGTH_NAME)]
+    ids = input_fields[concat_name(name_prefix, Constants.IDS_NAME)]
+    nonpadding_tokens_num = tf.reduce_sum(length)
+    shape = tf.shape(ids)
+    total_tokens_num = shape[0] * shape[1]
+    return nonpadding_tokens_num, total_tokens_num
 
 
 def port_is_open(host):

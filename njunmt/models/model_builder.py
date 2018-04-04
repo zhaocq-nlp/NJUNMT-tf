@@ -28,6 +28,7 @@ from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.constants import Constants
 from njunmt.utils.constants import ModeKeys
 from njunmt.utils.misc import inspect_varname_prefix
+from njunmt.utils.misc import compute_non_padding_num
 from njunmt.utils.misc import get_model_top_scope_name
 
 
@@ -102,6 +103,28 @@ class EstimatorSpec(
             training_hooks=training_hooks)
 
 
+def _add_to_display_collection(input_fields):
+    """ Adds the input fields to the display collection.
+
+    Args:
+        input_fields: A dict of placeholders.
+    """
+
+    def _add(prefix):
+        print("hehehahaxixi")
+        nonpadding_tokens_num, total_tokens_num = compute_non_padding_num(input_fields, prefix)
+        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME,
+                             "input_stats/{}_nonpadding_tokens_num".format(prefix))
+        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, nonpadding_tokens_num)
+        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, "input_stats/{}_nonpadding_ratio".format(prefix))
+        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME,
+                             tf.to_float(nonpadding_tokens_num)
+                             / tf.to_float(total_tokens_num))
+
+    _add(Constants.FEATURE_NAME_PREFIX)
+    _add(Constants.LABEL_NAME_PREFIX)
+
+
 def model_fn(
         model_configs,
         mode,
@@ -142,16 +165,16 @@ def model_fn(
         vocab_target=dataset.vocab_target,
         name=model_name,
         verbose=verbose)
-    # model_template_builder = tf.make_template("", model.build, create_scope_now_=False)
-    # model_output = model_template_builder(dataset.input_fields)
+    input_fields = eval(model_str).create_input_fields(mode)
     with tf.variable_scope("", reuse=reuse):
-        model_output = model.build()
+        model_output = model.build(input_fields=input_fields)
     # training mode
     if mode == ModeKeys.TRAIN:
         loss = model_output
         # Register the training loss in a collection so that hooks can easily fetch them
         tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, Constants.TRAIN_LOSS_KEY_NAME)
         tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, loss)
+        _add_to_display_collection(input_fields)
         # build train op
         train_op = optimize(loss, model_configs["optimizer_params"])
         # build training hooks
@@ -159,9 +182,10 @@ def model_fn(
         from njunmt.training.text_metrics_spec import build_eval_metrics
         hooks.extend(build_eval_metrics(model_configs, dataset,
                                         is_cheif=is_chief, model_name=model_name))
+
         return EstimatorSpec(
             mode,
-            input_fields=model.input_fields,
+            input_fields=input_fields,
             loss=loss,
             train_op=train_op,
             training_hooks=hooks,
@@ -172,7 +196,7 @@ def model_fn(
         loss = model_output[0]
         return EstimatorSpec(
             mode,
-            input_fields=model.input_fields,
+            input_fields=input_fields,
             loss=loss,
             # attentions for force decoding
             predictions=model_output[1])
@@ -180,7 +204,7 @@ def model_fn(
     assert mode == ModeKeys.INFER
     return EstimatorSpec(
         mode,
-        input_fields=model.input_fields,
+        input_fields=input_fields,
         predictions=model_output)
 
 
@@ -207,6 +231,7 @@ def model_fn_ensemble(
 
     # load variable, rename (add prefix to varname), build model
     models = []
+    input_fields = None
     for index, model_dir in enumerate(model_dirs):
         if verbose:
             tf.logging.info("loading variables from {}".format(model_dir))
@@ -237,13 +262,16 @@ def model_fn_ensemble(
             name=model_name,
             verbose=False)
         models.append(model)
+        if input_fields is None:
+            input_fields = eval(model_configs["model"]).create_input_fields(ModeKeys.INFER)
     ensemble_model = EnsembleModel(
         weight_scheme=weight_scheme,
         inference_options=inference_options)
     with tf.variable_scope("", reuse=True):
         predictions = ensemble_model.build(
-            base_models=models, vocab_target=dataset.vocab_target)
+            base_models=models, vocab_target=dataset.vocab_target,
+            input_fields=input_fields)
     return EstimatorSpec(
         ModeKeys.INFER,
-        input_fields=ensemble_model.input_fields,
+        input_fields=input_fields,
         predictions=predictions)

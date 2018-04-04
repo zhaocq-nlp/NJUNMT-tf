@@ -71,10 +71,10 @@ class SequenceToSequence(Configurable):
         self._vocab_source = vocab_source
         self._vocab_target = vocab_target
         self._verbose = verbose
-        self._input_fields = None
         set_fflayers_layer_norm(self.params["fflayers.layer_norm"])
 
-    def _create_input_fields(self):
+    @staticmethod
+    def create_input_fields(mode):
         """ Creates tf placeholders and add input data status to tf
           collections for displaying.
 
@@ -90,7 +90,7 @@ class SequenceToSequence(Configurable):
             name="{}_{}".format(Constants.FEATURE_LENGTH_NAME, SequenceToSequence.__MODEL_COUNTER - 1))
         inp[Constants.FEATURE_IDS_NAME] = feature_ids
         inp[Constants.FEATURE_LENGTH_NAME] = feature_length
-        if self.mode == ModeKeys.INFER:
+        if mode == ModeKeys.INFER:
             return inp
 
         label_ids = tf.placeholder(
@@ -101,43 +101,7 @@ class SequenceToSequence(Configurable):
             name="{}_{}".format(Constants.LABEL_LENGTH_NAME, SequenceToSequence.__MODEL_COUNTER - 1))
         inp[Constants.LABEL_IDS_NAME] = label_ids
         inp[Constants.LABEL_LENGTH_NAME] = label_length
-        if self.mode == ModeKeys.EVAL:
-            return inp
-
-        assert self.mode == ModeKeys.TRAIN
-        feature_nonpadding_tokens_num = tf.reduce_sum(feature_length)
-        feature_shape = tf.shape(feature_ids)
-        feature_total_tokens_num = feature_shape[0] * feature_shape[1]
-        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, "input_stats/feature_nonpadding_tokens_num")
-        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, feature_nonpadding_tokens_num)
-        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, "input_stats/feature_nonpadding_ratio")
-        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME,
-                             tf.to_float(feature_nonpadding_tokens_num)
-                             / tf.to_float(feature_total_tokens_num))
-
-        label_nonpadding_tokens_num = tf.reduce_sum(label_length)
-        label_shape = tf.shape(label_ids)
-        label_total_tokens_num = label_shape[0] * label_shape[1]
-
-        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, "input_stats/label_nonpadding_tokens_num")
-        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, label_nonpadding_tokens_num)
-        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, "input_stats/label_nonpadding_ratio")
-        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME,
-                             tf.to_float(label_nonpadding_tokens_num)
-                             / tf.to_float(label_total_tokens_num))
         return inp
-
-    @property
-    def input_fields(self):
-        """ Returns the input_fields. """
-        if self._input_fields is None:
-            self._input_fields = self._create_input_fields()
-        return self._input_fields
-
-    @input_fields.setter
-    def input_fields(self, val):
-        """ Resets the input_fields property. """
-        self._input_fields = val
 
     def _create_modalities(self):
         """ Creates source and target modalities.
@@ -202,7 +166,7 @@ class SequenceToSequence(Configurable):
         else:
             raise ValueError("Unrecognized initializer: {}".format(self.params["initializer"]))
 
-    def build(self, input_fields=None):
+    def build(self, input_fields):
         """ Builds the sequence-to-sequence model.
 
         This function calls many inner functions to build each component
@@ -213,14 +177,13 @@ class SequenceToSequence(Configurable):
 
         Returns: Model output. See _pack_output() for more details.
         """
-        if input_fields is not None:
-            self.input_fields = input_fields
         with tf.variable_scope(self._name, initializer=self.get_variable_initializer()):
             input_modality, target_modality = self._create_modalities()
             encoder = self._create_encoder()
             encoder_output = self._encode(
                 encoder=encoder,
-                input_modality=input_modality)
+                input_modality=input_modality,
+                input_fields=input_fields)
 
             encdec_bridge = self._create_bridge(encoder_output)
             decoder = self._create_decoder()
@@ -228,11 +191,12 @@ class SequenceToSequence(Configurable):
                 decoder=decoder,
                 encdec_bridge=encdec_bridge,
                 encoder_output=encoder_output,
-                target_modality=target_modality)
+                target_modality=target_modality,
+                input_fields=input_fields)
 
             final_outputs = self._pack_output(
                 encoder_output, decoder_output, decoding_res,
-                target_modality)
+                target_modality, **input_fields)
         return final_outputs
 
     def _compute_loss(self, logits, label_ids, label_length, target_modality):
@@ -252,7 +216,7 @@ class SequenceToSequence(Configurable):
             return loss
 
     def _decode(self, decoder, encdec_bridge, encoder_output,
-                target_modality):
+                target_modality, input_fields):
         """ Builds helper and calls decoder's `decode` method.
 
         Args:
@@ -261,21 +225,22 @@ class SequenceToSequence(Configurable):
             encoder_output: An instance of `collections.namedtuple`
               from `Encoder.encode()`.
             target_modality: An instance of `Modality`.
+            input_fields: A dictionary of placeholders.
 
         Returns: The results of decoding. For more details, see
           `Decoder.decode()`.
         """
         if self.mode == ModeKeys.TRAIN \
                 or self.mode == ModeKeys.EVAL:
-            label_ids = self.input_fields[Constants.LABEL_IDS_NAME]
-            label_length = self.input_fields[Constants.LABEL_LENGTH_NAME]
+            label_ids = input_fields[Constants.LABEL_IDS_NAME]
+            label_length = input_fields[Constants.LABEL_LENGTH_NAME]
             helper = feedback.TrainingFeedback(
                 vocab=self._vocab_target, label_ids=label_ids, label_length=label_length)
 
         else:  # self.mode == tf.contrib.learn.ModeKeys.INFER
             helper = feedback.BeamFeedback(
                 vocab=self._vocab_target,
-                batch_size=tf.shape(self.input_fields[Constants.FEATURE_IDS_NAME])[0],
+                batch_size=tf.shape(input_fields[Constants.FEATURE_IDS_NAME])[0],
                 maximum_labels_length=self.params["inference.maximum_labels_length"],
                 beam_size=self.params["inference.beam_size"],
                 alpha=self.params["inference.length_penalty"])
@@ -284,18 +249,19 @@ class SequenceToSequence(Configurable):
             beam_size=self.params["inference.beam_size"])
         return decoder_output, decoding_res
 
-    def _encode(self, encoder, input_modality):
+    def _encode(self, encoder, input_modality, input_fields):
         """ Calls encoder's encode method.
 
         Args:
             encoder: An instance of `Encoder`.
             input_modality: An instance of `Modality`.
+            input_fields: A dictionary of placeholders.
 
         Returns: The results of encoding, an instance of `collections.namedtuple`
           from `Encoder.encode()`.
         """
-        feature_ids = self.input_fields[Constants.FEATURE_IDS_NAME]
-        feature_length = self.input_fields[Constants.FEATURE_LENGTH_NAME]
+        feature_ids = input_fields[Constants.FEATURE_IDS_NAME]
+        feature_length = input_fields[Constants.FEATURE_LENGTH_NAME]
 
         if self.params["source.reverse"]:
             feature_ids = tf.reverse_sequence(
@@ -369,7 +335,7 @@ class SequenceToSequence(Configurable):
               mode==INFER, else, a logits Tensor with shape
               [timesteps, batch_size, vocab_size].
             target_modality: An instance of `Modality`.
-            **kwargs:
+            **kwargs: e.g. input fields.
 
         Returns: A dictionary containing inference status if mode==INFER,
          else a list with the first element be `loss`.
@@ -377,8 +343,8 @@ class SequenceToSequence(Configurable):
         if self.mode == ModeKeys.TRAIN or self.mode == ModeKeys.EVAL:
             loss = self._compute_loss(
                 logits=decoding_result,  # [timesteps, batch_size, dim]
-                label_ids=self.input_fields[Constants.LABEL_IDS_NAME],
-                label_length=self.input_fields[Constants.LABEL_LENGTH_NAME],
+                label_ids=kwargs[Constants.LABEL_IDS_NAME],
+                label_length=kwargs[Constants.LABEL_LENGTH_NAME],
                 target_modality=target_modality)
         if self.mode == ModeKeys.TRAIN:
             return loss
@@ -409,5 +375,5 @@ class SequenceToSequence(Configurable):
             beam_size=self.params["inference.beam_size"],
             alpha=self.params["inference.length_penalty"])
         predict_out["attentions"] = attentions
-        predict_out["source"] = self.input_fields[Constants.FEATURE_IDS_NAME]
+        predict_out["source"] = kwargs[Constants.FEATURE_IDS_NAME]
         return predict_out
