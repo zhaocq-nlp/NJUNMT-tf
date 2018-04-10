@@ -111,7 +111,6 @@ def _add_to_display_collection(input_fields):
     """
 
     def _add(prefix):
-        print("hehehahaxixi")
         nonpadding_tokens_num, total_tokens_num = compute_non_padding_num(input_fields, prefix)
         tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME,
                              "input_stats/{}_nonpadding_tokens_num".format(prefix))

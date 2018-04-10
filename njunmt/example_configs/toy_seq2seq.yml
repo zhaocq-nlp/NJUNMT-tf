@@ -22,7 +22,7 @@ model_params:
       dropout_state_keep_prob: 1.0
       num_layers: 1
 
-  bridge.class: ZeroBridge
+  bridge.class: VariableBridge
   bridge.params:
 
   decoder.class: njunmt.decoders.CondAttentionDecoder

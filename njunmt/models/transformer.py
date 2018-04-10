@@ -69,7 +69,7 @@ class Transformer(SequenceToSequence):
             t2t_default_params.pop("bridge.params")
         return t2t_default_params
 
-    def _compute_loss_t2t(self, logits, label_ids, label_length, target_modality):
+    def _compute_loss_t2t(self, logits, label_ids, label_length):
         """ Computes loss via `target_modality`. The loss is further
         scaled by the ratio of the size of this batch to the size of
         the largest training batch ever.
@@ -85,12 +85,11 @@ class Transformer(SequenceToSequence):
             logits: The logits Tensor with shape [timesteps, batch_size, target_vocab_size].
             label_ids: The labels Tensor with shape [batch_size, timesteps].
             label_length: The length of labels Tensor with shape [batch_size, ]
-            target_modality: An instance of `Modality`.
 
         Returns: Loss on this batch of data, a tf.float32 scalar.
         """
-        with tf.variable_scope(target_modality.name):
-            loss = target_modality.loss(
+        with tf.variable_scope(self._target_modality.name):
+            loss = self._target_modality.loss(
                 logits=logits, label_ids=label_ids, label_length=label_length)
         max_nonpadding_var = tf.get_variable(
             "max_nonpadding", shape=[],
@@ -109,15 +108,11 @@ class Transformer(SequenceToSequence):
             loss *= small_batch_multilier
         return loss
 
-    def _create_bridge(self, encoder_output):
+    def _create_bridge(self):
         """ Creates bridge between encoder and decoder.
 
         Overwrite the `_create_bridge()` in parent class because
         Transformer does not need bridge.
-
-        Args:
-            encoder_output: An instance of `collections.namedtuple`
-              from `Encoder.encode()`.
 
         Returns: None.
         """

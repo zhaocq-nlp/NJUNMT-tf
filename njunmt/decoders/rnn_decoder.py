@@ -143,7 +143,7 @@ class CondAttentionDecoder(Decoder):
                                                activation=None,
                                                dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
                                                name="ff_att_keys")
-        init_rnn_states = bridge(self._r_rnn_cells.state_size)
+        init_rnn_states = bridge(encoder_output, self._r_rnn_cells.state_size)
         init_cache = initialize_cache(
             decoding_states=init_rnn_states,
             attention_keys=projected_attention_keys,
@@ -325,7 +325,7 @@ class AttentionDecoder(Decoder):
                                                activation=None,
                                                dropout_input_keep_prob=self.params["dropout_context_keep_prob"],
                                                name="ff_att_keys")
-        init_rnn_states = bridge(self._rnn_cells.state_size)
+        init_rnn_states = bridge(encoder_output, self._rnn_cells.state_size)
         if self._attention.attention_value_depth > 0:
             init_att_context = tf.zeros([tf.shape(attention_values)[0],
                                          self._attention.attention_value_depth], dtype=tf.float32)
@@ -475,7 +475,7 @@ class SimpleDecoder(Decoder):
         Returns: A dict containing decoder RNN states and will be
           passed to `step()` function.
         """
-        init_rnn_states = bridge(self.rnn_cells.state_size)
+        init_rnn_states = bridge(encoder_output, self.rnn_cells.state_size)
         init_cache = initialize_cache(
             decoding_states=init_rnn_states)
         return init_cache

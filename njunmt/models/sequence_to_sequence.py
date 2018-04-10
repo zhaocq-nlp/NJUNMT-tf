@@ -72,6 +72,11 @@ class SequenceToSequence(Configurable):
         self._vocab_target = vocab_target
         self._verbose = verbose
         set_fflayers_layer_norm(self.params["fflayers.layer_norm"])
+        # create Network components
+        self._input_modality, self._target_modality = self._create_modalities()
+        self._encoder = self._create_encoder()
+        self._decoder = self._create_decoder()
+        self._encoder_decoder_bridge = self._create_bridge()
 
     @staticmethod
     def create_input_fields(mode):
@@ -178,53 +183,36 @@ class SequenceToSequence(Configurable):
         Returns: Model output. See _pack_output() for more details.
         """
         with tf.variable_scope(self._name, initializer=self.get_variable_initializer()):
-            input_modality, target_modality = self._create_modalities()
-            encoder = self._create_encoder()
-            encoder_output = self._encode(
-                encoder=encoder,
-                input_modality=input_modality,
-                input_fields=input_fields)
-
-            encdec_bridge = self._create_bridge(encoder_output)
-            decoder = self._create_decoder()
+            encoder_output = self._encode(input_fields=input_fields)
             decoder_output, decoding_res = self._decode(
-                decoder=decoder,
-                encdec_bridge=encdec_bridge,
                 encoder_output=encoder_output,
-                target_modality=target_modality,
                 input_fields=input_fields)
 
             final_outputs = self._pack_output(
-                encoder_output, decoder_output, decoding_res,
-                target_modality, **input_fields)
+                encoder_output, decoder_output, decoding_res, **input_fields)
         return final_outputs
 
-    def _compute_loss(self, logits, label_ids, label_length, target_modality):
+    def _compute_loss(self, logits, label_ids, label_length):
         """ Computes loss via `target_modality`.
 
         Args:
             logits: The logits Tensor with shape [timesteps, batch_size, target_vocab_size].
             label_ids: The labels Tensor with shape [batch_size, timesteps].
             label_length: The length of labels Tensor with shape [batch_size, ]
-            target_modality: An instance of `Modality`.
 
         Returns: Loss on this batch of data, a tf.float32 scalar.
         """
-        with tf.variable_scope(target_modality.name):
-            loss = target_modality.loss(
+        with tf.variable_scope(self._target_modality.name):
+            loss = self._target_modality.loss(
                 logits=logits, label_ids=label_ids, label_length=label_length)
             return loss
 
-    def _decode(self, decoder, encdec_bridge, encoder_output,
-                target_modality, input_fields):
+    def _decode(self, encoder_output, input_fields):
         """ Builds helper and calls decoder's `decode` method.
 
         Args:
-            decoder: An instance of `Decoder`.
-            encdec_bridge: An instance of `Bridge`, or None.
             encoder_output: An instance of `collections.namedtuple`
               from `Encoder.encode()`.
-            target_modality: An instance of `Modality`.
             input_fields: A dictionary of placeholders.
 
         Returns: The results of decoding. For more details, see
@@ -244,17 +232,15 @@ class SequenceToSequence(Configurable):
                 maximum_labels_length=self.params["inference.maximum_labels_length"],
                 beam_size=self.params["inference.beam_size"],
                 alpha=self.params["inference.length_penalty"])
-        decoder_output, decoding_res = decoder.decode(
-            encoder_output, encdec_bridge, helper, target_modality,
+        decoder_output, decoding_res = self._decoder.decode(
+            encoder_output, self._encoder_decoder_bridge, helper, self._target_modality,
             beam_size=self.params["inference.beam_size"])
         return decoder_output, decoding_res
 
-    def _encode(self, encoder, input_modality, input_fields):
+    def _encode(self, input_fields):
         """ Calls encoder's encode method.
 
         Args:
-            encoder: An instance of `Encoder`.
-            input_modality: An instance of `Modality`.
             input_fields: A dictionary of placeholders.
 
         Returns: The results of encoding, an instance of `collections.namedtuple`
@@ -268,7 +254,7 @@ class SequenceToSequence(Configurable):
                 input=feature_ids,
                 seq_lengths=feature_length,
                 batch_axis=0, seq_axis=1)
-        encoder_output = encoder.encode(feature_ids, feature_length, input_modality)
+        encoder_output = self._encoder.encode(feature_ids, feature_length, self._input_modality)
         return encoder_output
 
     def _create_encoder(self):
@@ -299,19 +285,14 @@ class SequenceToSequence(Configurable):
             name=decoder_cls_name.split(".")[-1], verbose=self.verbose)
         return decoder
 
-    def _create_bridge(self, encoder_output):
+    def _create_bridge(self):
         """ Creates bridge between encoder and decoder according
         to model parameters, initialized by `encoder_output`.
-
-        Args:
-            encoder_output: An instance of `collections.namedtuple`
-              from `Encoder.encode()`.
 
         Returns: An instance of `Bridge`.
         """
         encdec_bridge = eval(self.params["bridge.class"])(
             params=self.params["bridge.params"],
-            encoder_output=encoder_output,
             mode=self.mode,
             verbose=self.verbose)
         return encdec_bridge
@@ -320,7 +301,6 @@ class SequenceToSequence(Configurable):
                      encoder_output,
                      decoder_output,
                      decoding_result,
-                     target_modality,
                      **kwargs):
         """ Packs model outputs.
 
@@ -334,7 +314,6 @@ class SequenceToSequence(Configurable):
               probabilities, beam ids and decoding length if
               mode==INFER, else, a logits Tensor with shape
               [timesteps, batch_size, vocab_size].
-            target_modality: An instance of `Modality`.
             **kwargs: e.g. input fields.
 
         Returns: A dictionary containing inference status if mode==INFER,
@@ -344,8 +323,7 @@ class SequenceToSequence(Configurable):
             loss = self._compute_loss(
                 logits=decoding_result,  # [timesteps, batch_size, dim]
                 label_ids=kwargs[Constants.LABEL_IDS_NAME],
-                label_length=kwargs[Constants.LABEL_LENGTH_NAME],
-                target_modality=target_modality)
+                label_length=kwargs[Constants.LABEL_LENGTH_NAME])
         if self.mode == ModeKeys.TRAIN:
             return loss
 
