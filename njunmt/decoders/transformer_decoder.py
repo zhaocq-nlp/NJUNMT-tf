@@ -222,8 +222,8 @@ class TransformerDecoder(Decoder):
                 keys = tf.zeros([batch_size, 0, depth])
                 values = tf.zeros([batch_size, 0, depth])
                 # Ensure shape invariance for tf.while_loop.
-                keys._shape = tf.TensorShape([None, None, depth])
-                values._shape = tf.TensorShape([None, None, depth])
+                keys.set_shape([None, None, depth])
+                values.set_shape([None, None, depth])
                 with tf.variable_scope("layer_%d" % l):
                     with tf.variable_scope("encdec_attention"):
                         with tf.variable_scope(self._encdec_attention_layers[l].name):

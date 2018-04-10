@@ -219,6 +219,8 @@ class CondAttentionDecoder(Decoder):
             encoder_decoder_attention=attention_scores)
 
         cache["decoding_states"] = cell_states
+        print(cell_states)
+        exit(0)
         return outputs, cache
 
 
