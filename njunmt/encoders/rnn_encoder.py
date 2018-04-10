@@ -52,19 +52,16 @@ class StackBidirectionalRNNEncoder(Encoder):
             }
         }
 
-    def encode(self, feature_ids, feature_length, input_modality, **kwargs):
+    def encode(self, features, feature_length, **kwargs):
         """ Encodes the inputs via a stacked bi-directional RNN.
 
         Args:
-            feature_ids: A Tensor, [batch_size, max_features_length].
+            features: A Tensor, [batch_size, max_features_length, dim].
             feature_length: A Tensor, [batch_size, ].
-            input_modality: An instance of `Modality`.
             **kwargs:
 
         Returns: An instance of `collections.namedtuple`.
         """
-        with tf.variable_scope(input_modality.name):
-            inputs = input_modality.bottom(feature_ids)
         scope = self.name
         if "scope" in kwargs:
             scope = kwargs.pop("scope")
@@ -75,7 +72,7 @@ class StackBidirectionalRNNEncoder(Encoder):
         outputs, states_fw, states_bw = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
             cells_fw=[self._cells_fw],
             cells_bw=[self._cells_bw],
-            inputs=inputs,
+            inputs=features,
             sequence_length=feature_length,
             dtype=tf.float32,
             scope=scope,
@@ -123,26 +120,23 @@ class UnidirectionalRNNEncoder(Encoder):
             }
         }
 
-    def encode(self, feature_ids, feature_length, input_modality, **kwargs):
+    def encode(self, features, feature_length, **kwargs):
         """ Encodes the inputs.
 
         Args:
-            feature_ids: A Tensor, [batch_size, max_features_length].
+            features: A Tensor, [batch_size, max_features_length, dim].
             feature_length: A Tensor, [batch_size, ].
-            input_modality: An instance of `Modality`.
             **kwargs:
 
         Returns: An instance of `collections.namedtuple`.
         """
-        with tf.variable_scope(input_modality.name):
-            inputs = input_modality.bottom(feature_ids)
         scope = self.name
         if "scope" in kwargs:
             scope = kwargs.pop("scope")
         # outputs: [batch_size, max_time, num_units_of_hidden]
         outputs, states = tf.nn.dynamic_rnn(
             cell=self._cells_fw,
-            inputs=inputs,
+            inputs=features,
             sequence_length=feature_length,
             dtype=tf.float32,
             scope=scope,

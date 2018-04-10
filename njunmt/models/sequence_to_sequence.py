@@ -237,6 +237,20 @@ class SequenceToSequence(Configurable):
             beam_size=self.params["inference.beam_size"])
         return decoder_output, decoding_res
 
+    def _input_to_embedding_fn(self, x, time=None):
+        """ Embeds the input symbols.
+
+        Args:
+            x: A 1/2-d Tensor to be embedded.
+            time: An integer indicating the position. If `x` has shape
+              [batch_size, timesteps], set None.
+
+        Returns: A 2/3-d Tensor according to `x`.
+        """
+        with tf.variable_scope(self._input_modality.name):
+            emb = self._input_modality.bottom(x, time)
+        return emb
+
     def _encode(self, input_fields):
         """ Calls encoder's encode method.
 
@@ -254,7 +268,8 @@ class SequenceToSequence(Configurable):
                 input=feature_ids,
                 seq_lengths=feature_length,
                 batch_axis=0, seq_axis=1)
-        encoder_output = self._encoder.encode(feature_ids, feature_length, self._input_modality)
+        features = self._input_to_embedding_fn(feature_ids)
+        encoder_output = self._encoder.encode(features, feature_length)
         return encoder_output
 
     def _create_encoder(self):

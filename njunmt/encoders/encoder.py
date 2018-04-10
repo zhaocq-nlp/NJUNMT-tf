@@ -51,13 +51,12 @@ class Encoder(Configurable):
         raise NotImplementedError
 
     @abstractmethod
-    def encode(self, feature_ids, feature_length, input_modality, **kwargs):
+    def encode(self, features, feature_length, **kwargs):
         """ Encodes the inputs.
 
         Args:
-            feature_ids: A Tensor, [batch_size, max_features_length].
+            features: A Tensor, [batch_size, max_features_length, dim].
             feature_length: A Tensor, [batch_size, ].
-            input_modality: An instance of `Modality`.
             **kwargs:
 
         Returns: An instance of `collections.namedtuple`.

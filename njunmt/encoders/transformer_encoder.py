@@ -75,23 +75,20 @@ class TransformerEncoder(Encoder):
             "layer_prepostprocess_dropout_keep_prob": 0.9
         }
 
-    def encode(self, feature_ids, feature_length, input_modality, **kwargs):
+    def encode(self, features, feature_length, **kwargs):
         """ Encodes the inputs.
 
         Args:
-            feature_ids: A Tensor, [batch_size, max_features_length].
+            features: A Tensor, [batch_size, max_features_length, dim].
             feature_length: A Tensor, [batch_size, ].
-            input_modality: An instance of `Modality`.
             **kwargs:
 
         Returns: An instance of `collections.namedtuple`.
         """
-        with tf.variable_scope(input_modality.name):
-            inputs = input_modality.bottom(feature_ids)
         with tf.variable_scope(self.name) as vs:
             # [batch_size, 1, 1, timesteps], FLOAT_MIN for padding, 0.0 for non-padding
             encoder_attention_bias = MultiHeadAttention.attention_length_to_bias(inputs, feature_length)
-            outputs, enc_self_attention = self._transform(inputs, encoder_attention_bias, scope=vs, **kwargs)
+            outputs, enc_self_attention = self._transform(features, encoder_attention_bias, scope=vs, **kwargs)
             if self.mode == ModeKeys.TRAIN:
                 encoder_output = self.encoder_output_tuple_type(
                     # [batch_size, timesteps, dim]
