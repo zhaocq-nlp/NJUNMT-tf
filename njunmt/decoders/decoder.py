@@ -165,24 +165,6 @@ class Decoder(Configurable):
         return ret_val, logits
 
 
-def _compute_logits(decoder, target_modality, decoder_output):
-    """ Computes logits.
-
-    Args:
-        decoder: An instance of `Decoder.
-        target_modality: An instance of `Modality`.
-        decoder_output: An instance of `collections.namedtuple`
-        whose element types are defined by `decoder.output_dtype`.
-
-    Returns: A `tf.Tensor`.
-    """
-    with tf.variable_scope(decoder.name):
-        decoder_top_features = decoder.merge_top_features(decoder_output)
-    with tf.variable_scope(target_modality.name):
-        logits = target_modality.top(decoder_top_features)
-    return logits
-
-
 def initialize_cache(
         decoding_states,
         attention_keys=None,
@@ -207,24 +189,6 @@ def initialize_cache(
     if memory_bias is not None:
         cache["memory_bias"] = memory_bias
     return cache
-
-
-def _embed_words(target_modality, symbols, time):
-    """ Embeds words into embeddings.
-
-    Calls prepare() once and step() repeatedly on `Decoder` object.
-
-    Args:
-        target_modality: A `Modality` object.
-        symbols: A `tf.Tensor` of 1-d, [batch_size, ].
-        time: An integer or a scalar int32 tensor,
-          indicating the position of this batch of symbols.
-
-    Returns: A `tf.Tensor`, [batch_size, dimension].
-    """
-    with tf.variable_scope(target_modality.name):
-        embeddings = target_modality.targets_bottom(symbols, time=time)
-        return embeddings
 
 
 def dynamic_decode(decoder,

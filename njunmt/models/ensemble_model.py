@@ -20,12 +20,12 @@ import os
 import tensorflow as tf
 from tensorflow.python.util import nest
 
-from njunmt.decoders.decoder import _embed_words, _compute_logits
 from njunmt.utils.beam_search import stack_beam_size
 from njunmt.utils.beam_search import BeamSearchStateSpec
 from njunmt.utils.beam_search import gather_states
 from njunmt.utils.beam_search import process_beam_predictions
 from njunmt.utils.expert_utils import DecoderOutputRemover
+from njunmt.utils.expert_utils import repeat_n_times
 from njunmt.utils.feedback import BeamFeedback
 from njunmt.utils.constants import Constants
 
@@ -34,8 +34,9 @@ def dynamic_ensemble_decode(
         decoders,
         encoder_outputs,
         bridges,
-        target_modalities,
         helper,
+        target_to_embedding_fns,
+        outputs_to_logits_fns,
         parallel_iterations=32,
         swap_memory=False,
         **kwargs):
@@ -48,9 +49,12 @@ def dynamic_ensemble_decode(
         encoder_outputs: A list of `collections.namedtuple`s from each
           corresponding `Encoder.encode()`.
         bridges: A list of `Bridge` instances or Nones.
-        target_modalities: A list of `Modality` instances.
         helper: An instance of `Feedback` that samples next symbols
           from logits.
+        target_to_embedding_fns: A list of callables, converts target ids to
+          embeddings.
+        outputs_to_logits_fns: A list of callables, converts decoder outputs
+          to logits.
         parallel_iterations: Argument passed to `tf.while_loop`.
         swap_memory: Argument passed to `tf.while_loop`.
         kwargs:
@@ -59,6 +63,7 @@ def dynamic_ensemble_decode(
       whose element types are defined by `BeamSearchStateSpec`, indicating
       the status of beam search.
     """
+    num_models = len(decoders)
     var_scope = tf.get_variable_scope()
     # Properly cache variable values inside the while_loop
     if var_scope.caching_device is None:
@@ -69,28 +74,33 @@ def dynamic_ensemble_decode(
             dtype=d, clear_after_read=False,
             size=0, dynamic_size=True)
 
-    decoder_output_removers = nest.map_structure(lambda dec: DecoderOutputRemover(
-        dec.mode, dec.output_dtype._fields, dec.output_ignore_fields), decoders)
+    decoder_output_removers = repeat_n_times(
+        num_models, lambda dec: DecoderOutputRemover(
+            dec.mode, dec.output_dtype._fields, dec.output_ignore_fields), decoders)
 
     # initialize first inputs (start of sentence) with shape [_batch*_beam,]
     initial_finished, initial_input_symbols = helper.init_symbols()
     initial_time = tf.constant(0, dtype=tf.int32)
-    initial_inputs = nest.map_structure(
-        lambda modality: _embed_words(modality, initial_input_symbols, initial_time),
-        target_modalities)
+    initial_inputs = repeat_n_times(
+        num_models, target_to_embedding_fns,
+        initial_input_symbols, initial_time)
+
     assert "beam_size" in kwargs
     beam_size = kwargs["beam_size"]
-    initial_caches = []
-    for dec, enc_out, bri in zip(decoders, encoder_outputs, bridges):
-        with tf.variable_scope(dec.name):
-            init_cache = dec.prepare(enc_out, bri, helper)  # prepare decoder
-            init_cache = stack_beam_size(init_cache, beam_size)
-            initial_caches.append(init_cache)
 
-    initial_outputs_tas = nest.map_structure(
-        lambda dec_out_rem, dec: nest.map_structure(
-            _create_ta, dec_out_rem.apply(dec.output_dtype)),
-        decoder_output_removers, decoders)
+    def _create_cache(_decoder, _encoder_output, _bridge):
+        with tf.variable_scope(_decoder.name):
+            _init_cache = _decoder.prepare(_encoder_output, _bridge, helper)
+            _init_cache = stack_beam_size(_init_cache, beam_size)
+        return _init_cache
+
+    initial_caches = repeat_n_times(
+        num_models, _create_cache,
+        decoders, encoder_outputs, bridges)
+
+    initial_outputs_tas = [nest.map_structure(
+        _create_ta, _decoder_output_remover.apply(_decoder.output_dtype))
+                           for _decoder_output_remover, _decoder in zip(decoder_output_removers, decoders)]
 
     def body_infer(time, inputs, caches, outputs_tas, finished,
                    log_probs, lengths, bs_stat_ta, predicted_ids):
@@ -111,22 +121,23 @@ def dynamic_ensemble_decode(
           `(time + 1, next_inputs, next_caches, next_outputs_tas,
           next_finished, next_log_probs, next_lengths, next_infer_status_ta)`.
         """
+
         # step decoder
-        outputs = []
-        next_caches = []
-        for dec, inp, cache in zip(decoders, inputs, caches):
-            with tf.variable_scope(dec.name):
-                out, next_cache = dec.step(inp, cache)
-                outputs.append(out)
-                next_caches.append(next_cache)
-        next_outputs_tas = []
-        for out_ta, out, rem in zip(outputs_tas, outputs, decoder_output_removers):
-            ta = nest.map_structure(lambda ta, out: ta.write(time, out),
-                                    out_ta, rem.apply(out))
-            next_outputs_tas.append(ta)
-        logits = []
-        for dec, modality, out in zip(decoders, target_modalities, outputs):
-            logits.append(_compute_logits(dec, modality, out))
+        def _decoding(_decoder, _input, _cache, _decoder_output_remover,
+                      _outputs_ta, _outputs_to_logits_fn):
+            with tf.variable_scope(_decoder.name):
+                _output, _next_cache = _decoder.step(_input, _cache)
+                _decoder_top_features = _decoder.merge_top_features(_output)
+            _ta = nest.map_structure(lambda _ta_ms, _output_ms: _ta_ms.write(time, _output_ms),
+                                     _outputs_ta, _decoder_output_remover.apply(_output))
+            _logit = _outputs_to_logits_fn(_decoder_top_features)
+            return _output, _next_cache, _ta, _logit
+
+        outputs, next_caches, next_outputs_tas, logits = repeat_n_times(
+            num_models, _decoding,
+            decoders, inputs, caches, decoder_output_removers,
+            outputs_tas, outputs_to_logits_fns)
+
         # sample next symbols
         sample_ids, beam_ids, next_log_probs, next_lengths \
             = helper.sample_symbols(logits, log_probs, finished, lengths, time=time)
@@ -144,9 +155,8 @@ def dynamic_ensemble_decode(
         next_predicted_ids = tf.reshape(next_predicted_ids, [-1])
         next_predicted_ids.set_shape([None])
         next_finished, next_input_symbols = helper.next_symbols(time=time, sample_ids=sample_ids)
-        next_inputs = nest.map_structure(
-            lambda modality: _embed_words(modality, next_input_symbols, time + 1),
-            target_modalities)
+        next_inputs = repeat_n_times(num_models, target_to_embedding_fns,
+                                     next_input_symbols, time + 1)
         next_finished = tf.logical_or(next_finished, finished)
 
         return time + 1, next_inputs, next_caches, next_outputs_tas, \
@@ -228,28 +238,16 @@ class EnsembleModel(object):
         Returns: A dictionary of inference status.
         """
         encoder_outputs = []
-        encdec_bridges = []
-        decoders = []
-        target_modalities = []
         # prepare for decoding of each model
         for index, model in enumerate(base_models):
             with tf.variable_scope(
                             Constants.ENSEMBLE_VARNAME_PREFIX + str(index)):
                 with tf.variable_scope(model.name):
-                    input_modality, target_modality = model._create_modalities()
-                    encoder = model._create_encoder()
-                    encoder_output = model._encode(
-                        encoder=encoder, input_modality=input_modality,
-                        input_fields=input_fields)
-                    bridge = model._create_bridge(encoder_output)
-                    decoder = model._create_decoder()
+                    encoder_output = model._encode(input_fields=input_fields)
                     vs_name = tf.get_variable_scope().name
-                    decoder.name = os.path.join(vs_name, decoder.name)
-                    target_modality.name = os.path.join(vs_name, target_modality.name)
+                    model._decoder.name = os.path.join(vs_name, model._decoder.name)
+                    model._target_modality.name = os.path.join(vs_name, model._target_modality.name)
                 encoder_outputs.append(encoder_output)
-                encdec_bridges.append(bridge)
-                decoders.append(decoder)
-                target_modalities.append(target_modality)
 
         helper = BeamFeedback(
             vocab=vocab_target,
@@ -258,12 +256,20 @@ class EnsembleModel(object):
             beam_size=self._beam_size,
             alpha=self._length_penalty,
             ensemble_weight=self.get_ensemble_weights(len(base_models)))
+
+        decoders, bridges, target_to_emb_fns, outputs_to_logits_fns = \
+            repeat_n_times(
+                len(base_models),
+                lambda m: (m._decoder, m._encoder_decoder_bridge, m._target_to_embedding_fn, m._outputs_to_logits_fn),
+                base_models)
+
         decoding_result = dynamic_ensemble_decode(
             decoders=decoders,
             encoder_outputs=encoder_outputs,
-            bridges=encdec_bridges,
-            target_modalities=target_modalities,
+            bridges=bridges,
             helper=helper,
+            target_to_embedding_fns=target_to_emb_fns,
+            outputs_to_logits_fns=outputs_to_logits_fns,
             beam_size=self._beam_size)
         predict_out = process_beam_predictions(
             decoding_result=decoding_result,
