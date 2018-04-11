@@ -16,11 +16,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
 import time
+import random
 from collections import namedtuple
 import tensorflow as tf
 
 from njunmt.utils.constants import ModeKeys
+from njunmt.utils.misc import get_available_devices
 
 
 class StepTimer(object):
@@ -201,6 +204,7 @@ class PadRemover(object):
 
 class DecoderOutputRemover(object):
     """ A helper to remove fields from a namedtuple. """
+
     def __init__(self, mode, all_fields, ignore_fields):
         """ Initializes the fields.
 
@@ -234,3 +238,186 @@ class DecoderOutputRemover(object):
         return self._new_type(
             **dict(zip(self._reserved_fields,
                        map(lambda i: getattr(ins, i), self._reserved_fields))))
+
+
+def _transpose_list_of_lists(lol):
+    """Transpose a list of equally-sized python lists.
+    Args:
+        lol: a list of lists
+    Returns:
+        a list of lists
+    """
+    assert lol, "cannot pass the empty list"
+    return [list(x) for x in zip(*lol)]
+
+
+def _maybe_repeat(x, n):
+    """Utility function for processing arguments that are singletons or lists.
+
+    Args:
+      x: either a list of n elements, or not a list.
+      n: repeat n times.
+
+    Returns:
+      a list of n elements.
+    """
+    if isinstance(x, list):
+        assert len(x) == n
+        return x
+    else:
+        return [x] * n
+
+
+class Parallelism(object):
+    """Helper class for creating sets of parallel function calls.
+    The purpose of this class is to replace this code:
+      e = []
+      f = []
+      for i in xrange(len(devices)):
+        with tf.device(devices[i]):
+          e_, f_ = func(a[i], b[i], c)
+          e.append(e_)
+          f.append(f_)
+    with this code:
+      e, f = expert_utils.Parallelism(devices)(func, a, b, c)
+    """
+
+    def __init__(self, mode, reuse=None):
+        self._devices = get_available_devices()
+        self._n = len(self._devices)
+        self._mode = mode
+        self._reuse = reuse
+
+    @property
+    def n(self):
+        return self._n
+
+    def __call__(self, fn, *args, **kwargs):
+        """A parallel set of function calls (using the specified devices).
+        Args:
+            fn: a function or a list of n functions.
+            *args: additional args.  Each arg should either be not a list, or a list
+              of length n.
+            **kwargs: additional keyword args.  Each arg should either be not a
+              list, or a list of length n.
+        Returns:
+           either a single list of length n (if fn does not return a tuple), or a
+           tuple of lists of length n (if fn returns a tuple).
+        """
+        # construct lists of args and kwargs for each function
+        if args:
+            my_args = _transpose_list_of_lists(
+                [_maybe_repeat(arg, self.n) for arg in args])
+        else:
+            my_args = [[] for _ in range(self.n)]
+        my_kwargs = [{} for _ in range(self.n)]
+        for k, v in six.iteritems(kwargs):
+            vals = _maybe_repeat(v, self.n)
+            for i in range(self.n):
+                my_kwargs[i][k] = vals[i]
+
+        # construct lists of functions
+        fns = _maybe_repeat(fn, self.n)
+
+        # apply fns
+        outputs = []
+        cache = {}
+        load = dict([(d, 0) for d in self._devices])
+        for device_id, device in enumerate(self._devices):
+
+            def daisy_chain_getter(getter, name, *args, **kwargs):
+                """Get a variable and cache in a daisy chain."""
+                device_var_key = (device, name)
+                if device_var_key in cache:
+                    # if we have the variable on the correct device, return it.
+                    return cache[device_var_key]
+                if name in cache:
+                    # if we have it on a different device, copy it from the last device
+                    v = tf.identity(cache[name])
+                else:
+                    var = getter(name, *args, **kwargs)
+                    v = tf.identity(var._ref())  # pylint: disable=protected-access
+                # update the cache
+                cache[name] = v
+                cache[device_var_key] = v
+                return v
+
+            def balanced_device_setter(op):
+                """Balance variables to all devices."""
+                if op.type in {'Variable', 'VariableV2', 'VarHandleOp'}:
+                    # return self._sync_device
+                    min_load = min(load.values())
+                    min_load_devices = [d for d in load if load[d] == min_load]
+                    chosen_device = random.choice(min_load_devices)
+                    load[chosen_device] += op.outputs[0].get_shape().num_elements()
+                    return chosen_device
+                return device
+
+            def identity_device_setter(op):
+                return device
+
+            if self._mode == ModeKeys.TRAIN:
+                custom_getter = daisy_chain_getter
+                device_setter = balanced_device_setter
+            else:
+                custom_getter = None
+                device_setter = device
+
+            with tf.name_scope("parallel_{}".format(device_id)):
+                with tf.variable_scope(
+                        tf.get_variable_scope(),
+                        reuse=True if device_id > 0 or self._reuse else None,
+                        custom_getter=custom_getter):
+                    with tf.device(device_setter):
+                        outputs.append(fns[device_id](*my_args[device_id], **my_kwargs[device_id]))
+
+        if isinstance(outputs[0], tuple):
+            outputs = list(zip(*outputs))
+            outputs = tuple([list(o) for o in outputs])
+        return outputs
+
+    def repeat(self, fn, *args, **kwargs):
+        """ Calls `fn` many times and returns the list of results.
+
+        Args:
+            fn: a function or a list of n functions.
+            *args: additional args.
+            **kwargs: additional keyword args.
+
+        Returns: A list of results
+        """
+        return repeat_n_times(self.n, fn, *args, **kwargs)
+
+
+def repeat_n_times(n, fn, *args, **kwargs):
+    """ Repeat apply fn n times.
+
+    Args:
+        n: n times.
+        fn: a function or a list of n functions.
+        *args: additional args.  Each arg should either be not a list, or a list
+          of length n.
+        **kwargs: additional keyword args.  Each arg should either be not a
+          list, or a list of length n.
+    Returns:
+           either a single list of length n (if fn does not return a tuple), or a
+           tuple of lists of length n (if fn returns a tuple).
+    """
+    if args:
+        my_args = _transpose_list_of_lists(
+            [_maybe_repeat(arg, n) for arg in args])
+    else:
+        my_args = [[] for _ in range(n)]
+    my_kwargs = [{} for _ in range(n)]
+    for k, v in six.iteritems(kwargs):
+        vals = _maybe_repeat(v, n)
+        for i in range(n):
+            my_kwargs[i][k] = vals[i]
+
+    # construct lists of functions
+    fns = _maybe_repeat(fn, n)
+    outputs = [fns[i](*my_args[i], **my_kwargs[i]) for i in range(n)]
+    if isinstance(outputs[0], tuple):
+        outputs = list(zip(*outputs))
+        outputs = tuple([list(o) for o in outputs])
+    return outputs

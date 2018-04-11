@@ -164,6 +164,14 @@ def get_available_gpus():
     return [x.name for x in local_device_protos if x.device_type == "GPU"]
 
 
+def get_available_devices():
+    """ Returns aa list of """
+    gpus = get_available_gpus()
+    if len(gpus) == 0:
+        return ["/cpu:0"]
+    return ["/gpu:{}".format(i) for i, _ in enumerate(gpus)]
+
+
 def label_smoothing(labels, vocab_size, epsilon=0.1):
     """Applies label smoothing. See https://arxiv.org/abs/1512.00567.
 
