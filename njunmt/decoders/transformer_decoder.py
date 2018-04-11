@@ -30,8 +30,6 @@ from njunmt.layers.common_layers import layer_postprocessing
 from njunmt.layers.common_layers import transformer_ffn_layer
 from njunmt.layers.common_attention import MultiHeadAttention
 from njunmt.layers.common_attention import attention_bias_lower_triangle
-from njunmt.layers.common_attention import embedding_to_padding
-from njunmt.utils.expert_utils import PadRemover
 
 
 class TransformerDecoder(Decoder):
@@ -166,12 +164,10 @@ class TransformerDecoder(Decoder):
             target_sos_ids = tf.reshape(target_sos_ids, [batch_size, 1])
             label_ids = tf.concat([target_sos_ids, label_ids], axis=1)[:, :-1]
             decoder_inputs = target_to_embedding_fn(label_ids)
-            decoder_inputs_padding = embedding_to_padding(decoder_inputs, label_length)
-            pad_remover = PadRemover(decoder_inputs_padding)
             with tf.variable_scope(self.name):
                 cache = self.prepare(encoder_output, None, helper)
                 outputs, decoder_self_attention, encdec_attention \
-                    = self._transform(decoder_inputs, cache, pad_remover)  # [batch_size, time, dim]
+                    = self._transform(decoder_inputs, cache)  # [batch_size, time, dim]
                 if self.mode == ModeKeys.TRAIN:
                     final_outputs = self._DecoderOutputSpec(
                         decoder_hidden=outputs)
