@@ -119,7 +119,9 @@ class TransformerDecoder(Decoder):
         return decoder_output.decoder_hidden
 
     def decode(self, encoder_output, bridge, helper,
-               target_modality, **kwargs):
+               target_to_embedding_fn,
+               outputs_to_logits_fn,
+               **kwargs):
         """ Decodes one sample.
 
         Args:
@@ -128,9 +130,10 @@ class TransformerDecoder(Decoder):
             bridge: None.
             helper: An instance of `Feedback` that samples next
               symbols from logits.
-            target_modality: An instance of `Modality`, that deals
-              with transformations from symbols to tensors or from
-              tensors to symbols (the decoder top and bottom layer).
+            target_to_embedding_fn: A callable, converts target ids to
+              embeddings.
+            outputs_to_logits_fn: A callable, converts decoder outputs
+              to logits.
 
         Returns: A tuple `(decoder_output, decoder_status)`. The
           `decoder_output` is an instance of `collections.namedtuple`
@@ -155,8 +158,7 @@ class TransformerDecoder(Decoder):
             target_sos_ids = tf.tile([helper.vocab.sos_id], [batch_size])
             target_sos_ids = tf.reshape(target_sos_ids, [batch_size, 1])
             label_ids = tf.concat([target_sos_ids, label_ids], axis=1)[:, :-1]
-            with tf.variable_scope(target_modality.name):
-                decoder_inputs = target_modality.targets_bottom(label_ids)
+            decoder_inputs = target_to_embedding_fn(label_ids)
             with tf.variable_scope(self.name):
                 cache = self.prepare(encoder_output, None, helper)
                 outputs, decoder_self_attention, encdec_attention \
@@ -175,13 +177,13 @@ class TransformerDecoder(Decoder):
                 decoder_top_features = self.merge_top_features(final_outputs)
             # do transpose to fit loss function, [time, batch_size, dim]
             decoder_top_features = tf.transpose(decoder_top_features, [1, 0, 2])
-            with tf.variable_scope(target_modality.name):
-                logits = target_modality.top(decoder_top_features)  # [time, batch_size, vocab_size]
+            logits = outputs_to_logits_fn(decoder_top_features)  # [time, batch_size, vocab_size]
             return final_outputs, logits
         outputs, infer_status = dynamic_decode(
             decoder=self, encoder_output=encoder_output,
             bridge=None, helper=helper,
-            target_modality=target_modality,
+            target_to_embedding_fn=target_to_embedding_fn,
+            outputs_to_logits_fn=outputs_to_logits_fn,
             **kwargs)
         return outputs, infer_status
 

@@ -233,7 +233,9 @@ class SequenceToSequence(Configurable):
                 beam_size=self.params["inference.beam_size"],
                 alpha=self.params["inference.length_penalty"])
         decoder_output, decoding_res = self._decoder.decode(
-            encoder_output, self._encoder_decoder_bridge, helper, self._target_modality,
+            encoder_output, self._encoder_decoder_bridge, helper,
+            self._target_to_embedding_fn,
+            self._outputs_to_logits_fn,
             beam_size=self.params["inference.beam_size"])
         return decoder_output, decoding_res
 
@@ -250,6 +252,32 @@ class SequenceToSequence(Configurable):
         with tf.variable_scope(self._input_modality.name):
             emb = self._input_modality.bottom(x, time)
         return emb
+
+    def _target_to_embedding_fn(self, x, time=None):
+        """ Embeds the input symbols.
+
+        Args:
+            x: A 1/2-d Tensor to be embedded.
+            time: An integer indicating the position. If `x` has shape
+              [batch_size, timesteps], set None.
+
+        Returns: A 2/3-d Tensor according to `x`.
+        """
+        with tf.variable_scope(self._target_modality.name):
+            emb = self._target_modality.targets_bottom(x, time)
+        return emb
+
+    def _outputs_to_logits_fn(self, outputs):
+        """ Computes logits.
+
+        Args:
+            outputs: A Tensor with shape [..., dim]
+
+        Returns: A Tensor with shape [..., vocab_size]
+        """
+        with tf.variable_scope(self._target_modality.name):
+            logits = self._target_modality.top(outputs)
+        return logits
 
     def _encode(self, input_fields):
         """ Calls encoder's encode method.

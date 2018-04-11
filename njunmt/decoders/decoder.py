@@ -121,7 +121,9 @@ class Decoder(Configurable):
         return None
 
     def decode(self, encoder_output, bridge, helper,
-               target_modality, **kwargs):
+               target_to_embedding_fn,
+               outputs_to_logits_fn,
+               **kwargs):
         """ Decodes one sample.
 
         Args:
@@ -131,9 +133,10 @@ class Decoder(Configurable):
               decoder states.
             helper: An instance of `Feedback` that samples next
               symbols from logits.
-            target_modality: An instance of `Modality`, that deals
-              with transformations from symbols to tensors or from
-              tensors to symbols (the decoder top and bottom layer).
+            target_to_embedding_fn: A callable, converts target ids to
+              embeddings.
+            outputs_to_logits_fn: A callable, converts decoder outputs
+              to logits.
             kwargs:
 
         Returns: A tuple `(decoder_output, decoder_status)`. The
@@ -150,12 +153,15 @@ class Decoder(Configurable):
             encoder_output=encoder_output,
             bridge=bridge,
             helper=helper,
-            target_modality=target_modality,
+            target_to_embedding_fn=target_to_embedding_fn,
+            outputs_to_logits_fn=outputs_to_logits_fn,
             **kwargs)
         if self.mode == ModeKeys.INFER:
             outputs, bs_results = ret_val
             return outputs, bs_results
-        logits = _compute_logits(self, target_modality, ret_val)
+        with tf.variable_scope(self.name):
+            decoder_top_features = self.merge_top_features(ret_val)
+        logits = outputs_to_logits_fn(decoder_top_features)
         return ret_val, logits
 
 
@@ -225,7 +231,8 @@ def dynamic_decode(decoder,
                    encoder_output,
                    bridge,
                    helper,
-                   target_modality,
+                   target_to_embedding_fn,
+                   outputs_to_logits_fn,
                    parallel_iterations=32,
                    swap_memory=False,
                    **kwargs):
@@ -241,9 +248,10 @@ def dynamic_decode(decoder,
           decoder states.
         helper: An instance of `Feedback` that samples next
           symbols from logits.
-        target_modality: An instance of `Modality`, that deals
-          with transformations from symbols to tensors or from
-          tensors to symbols (the decoder top and bottom layer).
+        target_to_embedding_fn: A callable, converts target ids to
+          embeddings.
+        outputs_to_logits_fn: A callable, converts decoder outputs
+          to logits.
         parallel_iterations: Argument passed to `tf.while_loop`.
         swap_memory: Argument passed to `tf.while_loop`.
         kwargs:
@@ -268,7 +276,7 @@ def dynamic_decode(decoder,
     # initialize first inputs (start of sentence) with shape [_batch*_beam,]
     initial_finished, initial_input_symbols = helper.init_symbols()
     initial_time = tf.constant(0, dtype=tf.int32)
-    initial_inputs = _embed_words(target_modality, initial_input_symbols, initial_time)
+    initial_inputs = target_to_embedding_fn(initial_input_symbols, initial_time)
 
     with tf.variable_scope(decoder.name):
         initial_cache = decoder.prepare(encoder_output, bridge, helper)  # prepare decoder
@@ -305,7 +313,9 @@ def dynamic_decode(decoder,
             log_probs, lengths = args[0], args[1]
             bs_stat_ta = args[2]
             predicted_ids = args[3]
-            logits = _compute_logits(decoder, target_modality, outputs)
+            with tf.variable_scope(decoder.name):
+                decoder_top_features = decoder.merge_top_features(outputs)
+            logits = outputs_to_logits_fn(decoder_top_features)
             # sample next symbols
             sample_ids, beam_ids, next_log_probs, next_lengths \
                 = helper.sample_symbols(logits, log_probs, finished, lengths, time=time)
@@ -323,7 +333,7 @@ def dynamic_decode(decoder,
             inner_loop_vars.extend([next_log_probs, next_lengths, bs_stat_ta, next_predicted_ids])
 
         next_finished, next_input_symbols = helper.next_symbols(time=time, sample_ids=sample_ids)
-        next_inputs = _embed_words(target_modality, next_input_symbols, time + 1)
+        next_inputs = target_to_embedding_fn(next_input_symbols, time + 1)
 
         next_finished = tf.logical_or(next_finished, finished)
         inner_loop_vars[1] = next_inputs
