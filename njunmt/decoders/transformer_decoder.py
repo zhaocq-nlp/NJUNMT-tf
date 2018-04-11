@@ -273,7 +273,7 @@ class TransformerDecoder(Decoder):
         """ Decodes one step
 
         Args:
-            decoder_input: The decoder input for this timestep,
+            decoder_inputs: The decoder input for this timestep,
               A Tensor, with shape [batch_size, timesteps, dmodel].
               Note that when mode==INFER, timesteps=1.
             cache: A dict containing decoding states at previous
