@@ -145,6 +145,7 @@ class TrainingFeedback(Feedback):
         super(TrainingFeedback, self).__init__(vocab, label_length)
         label_ids = tf.convert_to_tensor(label_ids)  # [batch, len]
         self.label_ids = label_ids  # for transformer
+        self.label_length = label_length
 
     def init_symbols(self):
         """ Returns a tuple `(init_finished_flags, init_input_symbols)`, where

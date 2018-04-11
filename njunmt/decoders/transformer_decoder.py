@@ -30,6 +30,8 @@ from njunmt.layers.common_layers import layer_postprocessing
 from njunmt.layers.common_layers import transformer_ffn_layer
 from njunmt.layers.common_attention import MultiHeadAttention
 from njunmt.layers.common_attention import attention_bias_lower_triangle
+from njunmt.layers.common_attention import embedding_to_padding
+from njunmt.utils.expert_utils import PadRemover
 
 
 class TransformerDecoder(Decoder):
@@ -152,17 +154,24 @@ class TransformerDecoder(Decoder):
             assert hasattr(helper, "label_ids"), (
                 "helper ({}) for TransformerDecoder when mode=TRAIN/EVAL "
                 "should provide attr \"label_ids\"".format(type(helper)))
+            assert hasattr(helper, "label_length"), (
+                "helper ({}) for TransformerDecoder when mode=TRAIN/EVAL "
+                "should provide attr \"label_length\"".format(type(helper)))
             # prepare decoder input
             label_ids = getattr(helper, "label_ids")  # [batch_size, max_len_trg]
+            label_length = getattr(helper, "label_length")  # [batch_size, ]
             batch_size = tf.shape(label_ids)[0]
+            # shift
             target_sos_ids = tf.tile([helper.vocab.sos_id], [batch_size])
             target_sos_ids = tf.reshape(target_sos_ids, [batch_size, 1])
             label_ids = tf.concat([target_sos_ids, label_ids], axis=1)[:, :-1]
             decoder_inputs = target_to_embedding_fn(label_ids)
+            decoder_inputs_padding = embedding_to_padding(decoder_inputs, label_length)
+            pad_remover = PadRemover(decoder_inputs_padding)
             with tf.variable_scope(self.name):
                 cache = self.prepare(encoder_output, None, helper)
                 outputs, decoder_self_attention, encdec_attention \
-                    = self._transform(decoder_inputs, cache)  # [batch_size, time, dim]
+                    = self._transform(decoder_inputs, cache, pad_remover)  # [batch_size, time, dim]
                 if self.mode == ModeKeys.TRAIN:
                     final_outputs = self._DecoderOutputSpec(
                         decoder_hidden=outputs)
@@ -269,7 +278,7 @@ class TransformerDecoder(Decoder):
         # loop on decoder_state, actually it is not used
         return final_outputs, cache
 
-    def _transform(self, decoder_inputs, cache):
+    def _transform(self, decoder_inputs, cache, pad_remover=None):
         """ Decodes one step
 
         Args:
@@ -278,6 +287,10 @@ class TransformerDecoder(Decoder):
               Note that when mode==INFER, timesteps=1.
             cache: A dict containing decoding states at previous
               timestep, attention values and attention length.
+            pad_remover: An expert_utils.PadRemover object tracking the padding
+              positions. If provided, the padding is removed before applying
+              the convolution, and restored afterward. This can give a significant
+              speedup (says Google's tensor2tensor code).
 
         Returns: A transformed Tensor.
         """
@@ -341,7 +354,7 @@ class TransformerDecoder(Decoder):
                             dropout_keep_prob=self.params["layer_prepostprocess_dropout_keep_prob"]),
                         filter_size=self.params["num_filter_units"],
                         output_size=self.params["num_hidden_units"],
-                        pad_remover=None,
+                        pad_remover=pad_remover,
                         dropout_relu_keep_prob=self.params["dropout_relu_keep_prob"])
                     # apply dropout, layer norm, residual
                     x = layer_postprocessing(
