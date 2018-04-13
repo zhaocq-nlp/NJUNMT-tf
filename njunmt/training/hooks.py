@@ -27,6 +27,7 @@ from tensorflow.python.training import training_util
 from njunmt.utils.constants import Constants
 from njunmt.utils.misc import dump_model_analysis
 from njunmt.utils.misc import load_pretrain_model
+from njunmt.utils.misc import get_saver_or_default
 from njunmt.utils.expert_utils import StepTimer
 from njunmt.utils.summary_writer import SummaryWriter
 
@@ -120,7 +121,7 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
         """
         tf.logging.info("Create CheckpointSaverHook.")
         if saver is None:
-            saver = saver_lib._get_saver_or_default()  # pylint: disable=protected-access
+            saver = get_saver_or_default(max_to_keep=8)  # pylint: disable=protected-access
         self._saver = saver
         self._checkpoint_dir = checkpoint_dir
         self._save_path = os.path.join(checkpoint_dir, Constants.MODEL_CKPT_FILENAME)
@@ -185,7 +186,8 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
                 # reloading model
                 self._saver.restore(run_context.session, checkpoint_path)
                 gs = run_context.session.run(self._global_step)
-                tf.logging.info("CheckpointSaverHook (before_run): reloading models and reset global_step={}".format(gs))
+                tf.logging.info(
+                    "CheckpointSaverHook (before_run): reloading models and reset global_step={}".format(gs))
                 StepTimer.reset_init_triggered_step(gs)
             elif self._reload_var_ops:
                 tf.logging.info("Assign all variables with pretrained variables.")

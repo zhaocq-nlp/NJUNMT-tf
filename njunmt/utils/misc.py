@@ -376,3 +376,34 @@ def set_fflayers_layer_norm(layer_norm=False):
     """ Set laye norm flag. """
     from njunmt.layers import common_layers
     common_layers.FFLAYERS_LAYER_NORM = layer_norm
+
+
+def get_saver_or_default(**kwargs):
+    """ Returns the saver from SAVERS collection, or creates a default one.
+
+    This method is used by other members of the training module, such as
+    `CheckpointSaverHook`.
+
+    This method is modified from tensorflow.python.training.saver._get_saver_or_default.
+
+    Args:
+        kwargs: Parameters passed to tf.train.Saver.
+
+    Returns: `Saver`.
+
+    Raises:
+        RuntimeError: If the SAVERS collection already has more than one items.
+    """
+    collection_key = tf.GraphKeys.SAVERS
+    savers = tf.get_collection(collection_key)
+    if savers:
+        if len(savers) > 1:
+            raise RuntimeError(
+              "More than one item in collection {}. "
+              "Please indicate which one to use by passing it to the constructor.".
+              format(collection_key))
+        return savers[0]
+    saver = tf.train.Saver(sharded=True, allow_empty=True, **kwargs)
+    if saver is not None:
+        tf.add_to_collection(collection_key, saver)
+    return saver
