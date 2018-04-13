@@ -87,7 +87,7 @@ class TransformerEncoder(Encoder):
         """
         with tf.variable_scope(self.name) as vs:
             # [batch_size, 1, 1, timesteps], FLOAT_MIN for padding, 0.0 for non-padding
-            encoder_attention_bias = MultiHeadAttention.attention_length_to_bias(features, feature_length)
+            encoder_attention_bias = MultiHeadAttention.attention_length_to_bias(tf.shape(features)[1], feature_length)
             outputs, enc_self_attention = self._transform(features, encoder_attention_bias, scope=vs, **kwargs)
             if self.mode == ModeKeys.TRAIN:
                 encoder_output = self.encoder_output_tuple_type(

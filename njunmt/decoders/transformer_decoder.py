@@ -214,7 +214,8 @@ class TransformerDecoder(Decoder):
         if hasattr(encoder_output, "attention_bias"):
             attention_bias = encoder_output.attention_bias
         else:
-            attention_bias = MultiHeadAttention.attention_length_to_bias(None, attention_length)
+            attention_bias = MultiHeadAttention.attention_length_to_bias(
+                tf.shape(attention_values)[1], attention_length)
 
         # initialize cache
         if self.mode == ModeKeys.INFER:

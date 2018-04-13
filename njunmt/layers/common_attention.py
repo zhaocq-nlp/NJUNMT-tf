@@ -32,28 +32,21 @@ from njunmt.utils.algebra_ops import combine_last_two_dimensions
 FLOAT_MIN = -1.e9
 
 
-def embedding_to_padding(emb, sequence_length):
+def embedding_to_padding(maxlen, sequence_length):
     """ Calculates the padding mask based on `sequence_length`.
 
     Args:
-        emb: An input embedding `Tensor` with shape
-          [batch_size, maximum_sequence_length, dmodel]
+        maxlen: The maximum sequence length.
         sequence_length: Length of each sequence in `emb`,
            a Tensor with shape [batch_size, ]
 
     Returns: A float Tensor with shape [batch_size, maximum_sequence_length],
       where 1.0 for padding and 0.0 for non-padding.
     """
-    if emb is None:
-        seq_mask = 1. - tf.sequence_mask(
-            lengths=tf.to_int32(sequence_length),
-            maxlen=tf.reduce_max(sequence_length),
-            dtype=tf.float32)  # 1.0 for padding
-    else:
-        seq_mask = 1. - tf.sequence_mask(
-            lengths=tf.to_int32(sequence_length),
-            maxlen=tf.shape(emb)[1],
-            dtype=tf.float32)  # 1.0 for padding
+    seq_mask = 1. - tf.sequence_mask(
+        lengths=tf.to_int32(sequence_length),
+        maxlen=tf.to_int32(maxlen),
+        dtype=tf.float32)  # 1.0 for padding
     return seq_mask
 
 
@@ -80,19 +73,18 @@ class BaseAttention(Configurable):
         return -1
 
     @staticmethod
-    def attention_length_to_bias(memory, memory_length):
+    def attention_length_to_bias(memory_maxlen, memory_length):
         """ Creates memory bias for attention weight.
 
         Args:
-            memory: Attention values tensor with shape
-              [batch_size, num_of_values, channels_value].
+            memory_maxlen: The maximum length of the memory.
             memory_length: The number of attention values, a
               Tensor with shape [batch_size,].
 
         Returns: A float Tensor with shape [batch_size, num_of_values],
             where FLOAT_MIN for padding and 0.0 for non-padding.
         """
-        memory_padding = embedding_to_padding(memory, memory_length)
+        memory_padding = embedding_to_padding(memory_maxlen, memory_length)
         memory_bias = memory_padding * FLOAT_MIN
         return memory_bias
 
@@ -158,7 +150,7 @@ class BaseAttention(Configurable):
 
             if memory_bias is None:
                 if memory_length is not None:
-                    memory_bias = BaseAttention.attention_length_to_bias(memory, memory_length)
+                    memory_bias = BaseAttention.attention_length_to_bias(tf.shape(memory)[1], memory_length)
 
             # attention weights: [batch_size, num_of_values]
             attention_weight = self.att_fn(query, keys, memory_bias)
@@ -326,19 +318,18 @@ class MultiHeadAttention(BaseAttention):
         return self._attention_value_depth
 
     @staticmethod
-    def attention_length_to_bias(memory, memory_length):
+    def attention_length_to_bias(memory_maxlen, memory_length):
         """ Creates memory bias for attention weight.
 
         Args:
-            memory: Attention values tensor with shape
-              [batch_size, num_of_values, channels_value].
+            memory_maxlen: The maximum length of the memory
             memory_length: The number of attention values, a
               Tensor with shape [batch_size,].
 
         Returns: A float Tensor with shape [batch_size, 1, 1, num_of_values],
             where FLOAT_MIN for padding and 0.0 for non-padding.
         """
-        input_padding = embedding_to_padding(memory, memory_length)
+        input_padding = embedding_to_padding(memory_maxlen, memory_length)
         memory_bias = attention_bias_ignore_padding(input_padding)
         return memory_bias
 
@@ -410,7 +401,7 @@ class MultiHeadAttention(BaseAttention):
             if memory_bias is None:
                 if memory_length is not None:
                     assert query is not None, "Unseen error may occur. Please CHECK."
-                    memory_bias = MultiHeadAttention.attention_length_to_bias(memory, memory_length)
+                    memory_bias = MultiHeadAttention.attention_length_to_bias(tf.shape(memory)[1], memory_length)
 
             # compute attention weight, [batch_size, num_heads, length_q, length_k]
             attention_weight = self.att_fn(q, k, memory_bias)

@@ -137,7 +137,7 @@ class CondAttentionDecoder(Decoder):
         else:
             attention_length = encoder_output.attention_length
             attention_bias = getattr(eval(self.params["attention.class"]),
-                                     "attention_length_to_bias")(None, attention_length)
+                                     "attention_length_to_bias")(tf.shape(attention_values)[1], attention_length)
         with tf.variable_scope(self._attention.name):
             projected_attention_keys = fflayer(inputs=attention_values, output_size=self._attention.attention_units,
                                                activation=None,
@@ -319,7 +319,7 @@ class AttentionDecoder(Decoder):
         else:
             attention_length = encoder_output.attention_length
             attention_bias = getattr(eval(self.params["attention.class"]),
-                                     "attention_length_to_bias")(None, attention_length)
+                                     "attention_length_to_bias")(tf.shape(attention_values)[1], attention_length)
         with tf.variable_scope(self._attention.name):
             projected_attention_keys = fflayer(inputs=attention_values, output_size=self._attention.attention_units,
                                                activation=None,
