@@ -20,6 +20,8 @@ import tensorflow as tf
 
 from njunmt.utils.misc import label_smoothing
 from njunmt.utils.misc import deprecated
+from njunmt.utils.expert_utils import PadRemover
+from njunmt.layers.common_attention import embedding_to_padding
 
 
 @deprecated
@@ -98,19 +100,15 @@ def crossentropy_t(logits, targets, sequence_length):
     Returns: A float32 Scalar.
     """
     # [timesteps, batch_size]
+    padding = tf.transpose(embedding_to_padding(tf.shape(logits)[0], sequence_length), [1, 0])
+    padremover = PadRemover(padding)
+    # [-1, vocab_size]
+    logits = tf.reshape(logits, tf.concat([[-1], logits.get_shape().as_list()[2:]], axis=0))
+    logits = padremover.remove(logits)
+    targets = padremover.remove(tf.reshape(targets, [-1]))
     losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
         logits=logits, labels=targets)
-
-    # [timesteps, batch_size]
-    loss_mask = tf.transpose(
-        tf.sequence_mask(
-            lengths=tf.to_int32(sequence_length),
-            maxlen=tf.to_int32(tf.shape(targets)[0]),
-            dtype=tf.float32), [1, 0])
-
-    losses = losses * loss_mask
-    loss = tf.reduce_sum(losses) / tf.to_float(
-        tf.reduce_sum(sequence_length))
+    loss = tf.reduce_mean(losses)
     return loss
 
 
