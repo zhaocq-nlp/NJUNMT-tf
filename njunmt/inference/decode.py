@@ -46,73 +46,30 @@ def _evaluate(
     return sess.run(eval_op, feed_dict=feed_dict)
 
 
-def evaluate_sentences(
-        sources,
-        targets,
-        sess,
-        input_fields,
-        eval_op,
-        vocab_source,
-        vocab_target,
-        n_words_src=-1,
-        n_words_trg=-1):
-    """ Evaluates a list of sentences.
-
-    Args:
-        sources: A list of strings.
-        targets: A list of strings.
-        sess: `tf.Session`.
-        input_fields: The dictionary of placeholders.
-        eval_op: Tensorflow operation.
-        vocab_source: A `Vocab` instance for source side feature map.
-        vocab_target: A `Vocab` instance for target side feature map.
-        n_words_src: An integer number. If provided and > 0, source side
-          token id that exceed this value will be mapped into UNK id.
-        n_words_trg: An integer number. If provided and > 0, target side
-          token id that exceed this value will be mapped into UNK id.
-
-    Returns: Results of `eval_op`.
-    """
-    sources = [vocab_source.convert_to_idlist(
-        re.split(r"\s*", snt.strip()), n_words_src) for snt in sources]
-    targets = [vocab_target.convert_to_idlist(
-        re.split(r"\s*", snt.strip()), n_words_trg) for snt in targets]
-    ph_x = input_fields[Constants.FEATURE_IDS_NAME]
-    ph_x_len = input_fields[Constants.FEATURE_LENGTH_NAME]
-    ph_y = input_fields[Constants.LABEL_IDS_NAME]
-    ph_y_len = input_fields[Constants.LABEL_LENGTH_NAME]
-    x, len_x = padding_batch_data(sources, vocab_source.pad_id)
-    y, len_y = padding_batch_data(targets, vocab_target.pad_id)
-    feed_dict = {ph_x: x, ph_x_len: len_x,
-                 ph_y: y, ph_y_len: len_y}
-    return _evaluate(sess, feed_dict, eval_op)
-
-
-def evaluate(sess, eval_op, eval_data):
+def evaluate(sess, loss_op, eval_data):
     """ Evaluates data by loss.
 
     Args:
         sess: `tf.Session`.
-        eval_op: Tensorflow operation, computing the loss.
+        loss_op: Tensorflow operation, computing the loss.
         eval_data: An iterable instance that each element
           is a packed feeding dictionary for `sess`.
 
     Returns: Total loss averaged by number of data samples.
     """
     losses = 0.
-    total_size = 0
+    weights = 0.
     for data in eval_data:
-        n_samples = len(data["feature_ids"])
-        loss = _evaluate(sess, data["feed_dict"], eval_op)
-        losses += loss * float(n_samples)
-        total_size += n_samples
-    loss = losses / float(total_size)
+        loss_sum, weight_sum = _evaluate(sess, data["feed_dict"], loss_op)
+        losses += loss_sum
+        weights += weight_sum
+    loss = losses / weights
     return loss
 
 
 def evaluate_with_attention(
         sess,
-        eval_op,
+        loss_op,
         eval_data,
         vocab_source,
         vocab_target,
@@ -122,7 +79,7 @@ def evaluate_with_attention(
 
     Args:
         sess: `tf.Session`.
-        eval_op: Tensorflow operation, computing the loss.
+        loss_op: Tensorflow operation, computing the loss.
         eval_data: An iterable instance that each element
           is a packed feeding dictionary for `sess`.
         vocab_source: A `Vocab` instance for source side feature map.
@@ -133,23 +90,27 @@ def evaluate_with_attention(
     Returns: Total loss averaged by number of data samples.
     """
     losses = 0.
-    total_size = 0
+    weights = 0.
+    num_of_samples = 0
     attentions = {}
     for data in eval_data:
+        _n_samples = len(data["feature_ids"])
         if attention_op is None:
-            loss = _evaluate(sess, data["feed_dict"], eval_op)
+            loss_sum, weight_sum = _evaluate(sess, data["feed_dict"], loss_op)
         else:
-            loss, atts = _evaluate(sess, data["feed_dict"], [eval_op, attention_op])
+            loss, atts = _evaluate(sess, data["feed_dict"], [loss_op, attention_op])
+            loss_sum, weight_sum = loss
             ss_strs = [vocab_source.convert_to_wordlist(ss, bpe_decoding=False)
                        for ss in data["feature_ids"]]
             tt_strs = [vocab_target.convert_to_wordlist(
                 tt, bpe_decoding=False, reverse_seq=False)
                        for tt in data["label_ids"]]
             attentions.update(pack_batch_attention_dict(
-                total_size, ss_strs, tt_strs, atts))
-        losses += loss * float(len(ss_strs))
-        total_size += len(ss_strs)
-    loss = losses / float(total_size)
+                num_of_samples, ss_strs, tt_strs, atts))
+        losses += loss_sum
+        weights += weight_sum
+        num_of_samples += _n_samples
+    loss = losses / weights
     if attention_op is not None:
         dump_attentions(output_filename_prefix, attentions)
     return loss
@@ -197,45 +158,6 @@ def _infer(
         attentions = process_attention_output(predict_out, argidx)
         return predict_out["hypothesis"][batch_beam_pos, :], attentions
     return predict_out["hypothesis"][batch_beam_pos, :], None
-
-
-def infer_sentences(
-        sources,
-        sess,
-        input_fields,
-        prediction_op,
-        vocab_source,
-        top_k=1,
-        n_words_src=-1):
-    """ Infers a list of sentences.
-
-    Args:
-        sources: A list of strings.
-        sess: `tf.Session`.
-        input_fields: The dictionary of placeholders.
-        prediction_op: Tensorflow operation for inference.
-        vocab_source: A `Vocab` instance for source side feature map.
-        alpha: A scalar number, length penalty rate. If not provided
-          or < 0, simply average each beam by length of predicted
-          sequence.
-        top_k: An integer, number of predicted sequences will be
-          returned.
-        n_words_src: An integer number. If provided and > 0, source side
-          token id that exceed this value will be mapped into UNK id.
-
-    Returns: A tuple `(predicted_sequences, attention_scores)`.
-      The `predicted_sequences` is an ndarray of shape
-      [`top_k`, max_sequence_length].
-      The `attention_scores` is None if there is no attention
-      related information in `prediction_op`.
-    """
-    sources = [vocab_source.convert_to_idlist(
-        re.split(r"\s*", snt.strip()), n_words_src) for snt in sources]
-    ph_x = input_fields[Constants.FEATURE_IDS_NAME]
-    ph_x_len = input_fields[Constants.FEATURE_LENGTH_NAME]
-    x, len_x = padding_batch_data(sources, vocab_source.pad_id)
-    feed_dict = {ph_x: x, ph_x_len: len_x}
-    return _infer(sess, feed_dict, prediction_op, len(x), top_k)
 
 
 def infer(

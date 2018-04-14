@@ -398,7 +398,7 @@ class EvalExperiment(Experiment):
             start_time = time.time()
             result = evaluate_with_attention(
                 sess=sess,
-                eval_op=estimator_spec.loss,
+                loss_op=estimator_spec.loss,
                 eval_data=eval_data,
                 vocab_source=self._vocab_source,
                 vocab_target=self._vocab_target,

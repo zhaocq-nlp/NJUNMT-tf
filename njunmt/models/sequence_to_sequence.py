@@ -200,12 +200,11 @@ class SequenceToSequence(Configurable):
             label_ids: The labels Tensor with shape [batch_size, timesteps].
             label_length: The length of labels Tensor with shape [batch_size, ]
 
-        Returns: Loss on this batch of data, a tf.float32 scalar.
+        Returns: Loss sum and weight sum.
         """
         with tf.variable_scope(self._target_modality.name):
-            loss = self._target_modality.loss(
+            return self._target_modality.loss(
                 logits=logits, label_ids=label_ids, label_length=label_length)
-            return loss
 
     def _decode(self, encoder_output, input_fields):
         """ Builds helper and calls decoder's `decode` method.
@@ -363,12 +362,12 @@ class SequenceToSequence(Configurable):
          else a list with the first element be `loss`.
         """
         if self.mode == ModeKeys.TRAIN or self.mode == ModeKeys.EVAL:
-            loss = self._compute_loss(
+            loss_sum, weight_sum = self._compute_loss(
                 logits=decoding_result,  # [timesteps, batch_size, dim]
                 label_ids=kwargs[Constants.LABEL_IDS_NAME],
                 label_length=kwargs[Constants.LABEL_LENGTH_NAME])
         if self.mode == ModeKeys.TRAIN:
-            return loss
+            return loss_sum, weight_sum
 
         attentions = dict()
 
@@ -388,7 +387,7 @@ class SequenceToSequence(Configurable):
             get_attention("decoder_self_attention", getattr(decoder_output, "decoder_self_attention"))
 
         if self.mode == ModeKeys.EVAL:
-            return loss, attentions
+            return (loss_sum, weight_sum), attentions
 
         assert self.mode == ModeKeys.INFER
         predict_out = process_beam_predictions(

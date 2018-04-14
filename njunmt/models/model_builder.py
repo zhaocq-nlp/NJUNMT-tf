@@ -169,7 +169,8 @@ def model_fn(
         model_output = model.build(input_fields=input_fields)
     # training mode
     if mode == ModeKeys.TRAIN:
-        loss = model_output
+        loss_sum, weight_sum = model_output
+        loss = loss_sum / tf.to_float(weight_sum)
         # Register the training loss in a collection so that hooks can easily fetch them
         tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, Constants.TRAIN_LOSS_KEY_NAME)
         tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, loss)
@@ -192,11 +193,10 @@ def model_fn(
 
     # evaluation mode
     if mode == ModeKeys.EVAL:
-        loss = model_output[0]
         return EstimatorSpec(
             mode,
             input_fields=input_fields,
-            loss=loss,
+            loss=model_output[0],
             # attentions for force decoding
             predictions=model_output[1])
 

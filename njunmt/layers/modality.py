@@ -252,11 +252,10 @@ class Modality(Configurable):
             label_ids: The gold symbol ids, a Tensor with shape [batch_size, timesteps].
             label_length: The true symbols lengths, a Tensor with shape [batch_size, ].
 
-        Returns: A tf.float32 scalar.
+        Returns: Loss sum and weight sum.
         """
-        loss = getattr(loss_fns, self.params["loss"])(
+        return getattr(loss_fns, self.params["loss"])(
             logits=logits,
             # transposed targets: [timesteps, batch_size]
             targets=tf.transpose(label_ids, [1, 0]),
             sequence_length=label_length)
-        return loss

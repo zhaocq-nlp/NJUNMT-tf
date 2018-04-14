@@ -36,7 +36,7 @@ def crossentropy_avgall(logits, targets, sequence_length):
         targets: The gold labels Tensor with shape [timesteps, batch_size].
         sequence_length: The length of `targets`, [batch_size, ]
 
-    Returns: A float32 Scalar.
+    Returns: Loss sum and weight sum.
     """
     # [timesteps, batch_size]
     losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -52,9 +52,9 @@ def crossentropy_avgall(logits, targets, sequence_length):
     losses = losses * loss_mask
     # average loss
     avg_length = tf.to_float(sequence_length)
-    loss = tf.reduce_mean(
-        tf.reduce_sum(losses, axis=0) / avg_length)
-    return loss
+    loss_by_time = tf.reduce_sum(losses, axis=0) / avg_length
+    loss_sum = tf.reduce_sum(loss_by_time)
+    return loss_sum, tf.to_float(tf.shape(sequence_length)[0])
 
 
 @deprecated
@@ -69,7 +69,7 @@ def smoothing_crossentropy_avgall(logits, targets, sequence_length):
         targets: The gold labels Tensor with shape [timesteps, batch_size].
         sequence_length: The length of `targets`, [batch_size, ]
 
-    Returns: A float32 Scalar.
+    Returns: Loss sum and weight sum.
     """
     soft_targets, normalizing = label_smoothing(targets, logits.get_shape().as_list()[-1])
     losses = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=soft_targets) - normalizing
@@ -82,9 +82,9 @@ def smoothing_crossentropy_avgall(logits, targets, sequence_length):
     losses = losses * loss_mask
     # average loss
     avg_length = tf.to_float(sequence_length)
-    loss = tf.reduce_mean(
-        tf.reduce_sum(losses, axis=0) / avg_length)
-    return loss
+    loss_by_time = tf.reduce_sum(losses, axis=0) / avg_length
+    loss_sum = tf.reduce_sum(loss_by_time)
+    return loss_sum, tf.to_float(tf.shape(sequence_length)[0])
 
 
 def crossentropy_t(logits, targets, sequence_length):
@@ -97,7 +97,7 @@ def crossentropy_t(logits, targets, sequence_length):
         targets: The gold labels Tensor with shape [timesteps, batch_size].
         sequence_length: The length of `targets`, [batch_size, ]
 
-    Returns: A float32 Scalar.
+    Returns: Loss sum and weight sum.
     """
     # [timesteps, batch_size]
     padding = tf.transpose(embedding_to_padding(tf.shape(logits)[0], sequence_length), [1, 0])
@@ -108,8 +108,8 @@ def crossentropy_t(logits, targets, sequence_length):
     targets = padremover.remove(tf.reshape(targets, [-1]))
     losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
         logits=logits, labels=targets)
-    loss = tf.reduce_mean(losses)
-    return loss
+    loss_sum = tf.reduce_sum(losses)
+    return loss_sum, tf.to_float(tf.shape(losses)[0])
 
 
 def crossentropy(logits, targets, sequence_length):
@@ -122,7 +122,7 @@ def crossentropy(logits, targets, sequence_length):
         targets: The gold labels Tensor with shape [timesteps, batch_size].
         sequence_length: The length of `targets`, [batch_size, ]
 
-    Returns: A float32 Scalar.
+    Returns: Loss sum and weight sum.
     """
     # [timesteps, batch_size]
     losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -136,8 +136,8 @@ def crossentropy(logits, targets, sequence_length):
             dtype=tf.float32), [1, 0])
 
     losses = losses * loss_mask
-    loss = tf.reduce_sum(losses, axis=0)
-    return tf.reduce_mean(loss)
+    loss_sum = tf.reduce_sum(losses)
+    return loss_sum, tf.to_float(tf.shape(sequence_length)[0])
 
 
 def smoothing_crossentropy(logits, targets, sequence_length):
@@ -150,7 +150,7 @@ def smoothing_crossentropy(logits, targets, sequence_length):
         targets: The gold labels Tensor with shape [timesteps, batch_size].
         sequence_length: The length of `targets`, [batch_size, ]
 
-    Returns: A float32 Scalar.
+    Returns: Loss sum and weight sum.
     """
     soft_targets, normalizing = label_smoothing(targets, logits.get_shape().as_list()[-1])
     losses = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=soft_targets) - normalizing
@@ -161,8 +161,8 @@ def smoothing_crossentropy(logits, targets, sequence_length):
             maxlen=tf.to_int32(tf.shape(targets)[0]),
             dtype=tf.float32), [1, 0])
     losses = losses * loss_mask
-    loss = tf.reduce_sum(losses, axis=0)
-    return tf.reduce_mean(loss)
+    loss_sum = tf.reduce_sum(losses)
+    return loss_sum, tf.to_float(tf.shape(sequence_length)[0])
 
 
 def smoothing_crossentropy_t(logits, targets, sequence_length):
@@ -175,7 +175,7 @@ def smoothing_crossentropy_t(logits, targets, sequence_length):
         targets: The gold labels Tensor with shape [timesteps, batch_size].
         sequence_length: The length of `targets`, [batch_size, ]
 
-    Returns: A float32 Scalar.
+    Returns: Loss sum and weight sum.
     """
     soft_targets, normalizing = label_smoothing(targets, logits.get_shape().as_list()[-1])
     losses = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=soft_targets) - normalizing
@@ -186,6 +186,5 @@ def smoothing_crossentropy_t(logits, targets, sequence_length):
             maxlen=tf.to_int32(tf.shape(targets)[0]),
             dtype=tf.float32), [1, 0])
     losses = losses * loss_mask
-    loss = tf.reduce_sum(losses) / tf.to_float(
-        tf.reduce_sum(sequence_length))
-    return loss
+    loss_sum = tf.reduce_sum(losses)
+    return loss_sum, tf.to_float(tf.reduce_sum(sequence_length))
