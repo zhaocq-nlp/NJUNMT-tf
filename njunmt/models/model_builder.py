@@ -20,6 +20,7 @@ from collections import namedtuple
 
 import tensorflow as tf
 
+import os
 import njunmt
 from njunmt.models import EnsembleModel
 from njunmt.training.hooks import build_hooks
@@ -236,6 +237,7 @@ def model_fn_ensemble(
             tf.logging.info("loading variables from {}".format(model_dir))
         # load variables
         model_name = None
+        ensemble_scope_prefix = None
         for var_name, _ in tf.contrib.framework.list_variables(model_dir):
             if var_name.startswith("OptimizeLoss"):
                 continue
@@ -243,6 +245,8 @@ def model_fn_ensemble(
                 model_name = inspect_varname_prefix(var_name)
             var = tf.contrib.framework.load_variable(model_dir, var_name)
             with tf.variable_scope(Constants.ENSEMBLE_VARNAME_PREFIX + str(index)):
+                if ensemble_scope_prefix is None:
+                    ensemble_scope_prefix = tf.get_variable_scope().name
                 var = tf.get_variable(
                     name=var_name, shape=var.shape, dtype=tf.float32,
                     initializer=tf.constant_initializer(var))
@@ -258,18 +262,18 @@ def model_fn_ensemble(
             mode=ModeKeys.INFER,
             vocab_source=dataset.vocab_source,
             vocab_target=dataset.vocab_target,
-            name=model_name,
+            name=os.path.join(ensemble_scope_prefix, model_name),
             verbose=False)
         models.append(model)
         if input_fields is None:
             input_fields = eval(model_configs["model"]).create_input_fields(ModeKeys.INFER)
     ensemble_model = EnsembleModel(
+        vocab_target=dataset.vocab_target,
+        base_models=models,
         weight_scheme=weight_scheme,
         inference_options=inference_options)
     with tf.variable_scope("", reuse=True):
-        predictions = ensemble_model.build(
-            base_models=models, vocab_target=dataset.vocab_target,
-            input_fields=input_fields)
+        predictions = ensemble_model.build(input_fields=input_fields)
     return EstimatorSpec(
         ModeKeys.INFER,
         input_fields=input_fields,

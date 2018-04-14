@@ -193,20 +193,33 @@ class EnsembleModel(object):
     """ Define the model ensemble wrapper class. """
 
     def __init__(self,
+                 vocab_target,
+                 base_models,
                  weight_scheme,
                  inference_options):
         """ Initializes ensemble model parameters.
 
         Args:
+            vocab_target: A `Vocab` instance.
+            base_models: A list of `SequenceToSequence` instances.
             weight_scheme: A string, the ensemble weights. See
               `get_ensemble_weights()` for more details.
             inference_options: Contains beam_size, length_penalty
               and maximum_labels_length.
         """
+        self._vocab_target = vocab_target
+        self._base_models = base_models
         self._weight_scheme = weight_scheme
         self._beam_size = inference_options["beam_size"]
         self._length_penalty = inference_options["length_penalty"]
         self._maximum_labels_length = inference_options["maximum_labels_length"]
+        # update model components' names
+        for model in self._base_models:
+            model._decoder.name = os.path.join(model.name, model._decoder.name)
+            model._encoder.name = os.path.join(model.name, model._encoder.name)
+            model._input_modality.name = os.path.join(model.name, model._input_modality.name)
+            model._target_modality.name = os.path.join(model.name, model._target_modality.name)
+            model._encoder_decoder_bridge.name = os.path.join(model.name, model._encoder_decoder_bridge.name)
 
     def get_ensemble_weights(self, num_models):
         """ Creates ensemble weights from `weight_scheme`.
@@ -227,41 +240,33 @@ class EnsembleModel(object):
         raise NotImplementedError("This weight scheme is not implemented: {}."
                                   .format(self._weight_scheme))
 
-    def build(self, base_models, vocab_target, input_fields):
+    def build(self, input_fields):
         """ Builds the ensemble model.
 
         Args:
-            base_models: A list of `BaseSeq2Seq` instances.
-            vocab_target: An instance of `Vocab`.
             input_fields: A dict of placeholders.
 
         Returns: A dictionary of inference status.
         """
         encoder_outputs = []
         # prepare for decoding of each model
-        for index, model in enumerate(base_models):
-            with tf.variable_scope(
-                            Constants.ENSEMBLE_VARNAME_PREFIX + str(index)):
-                with tf.variable_scope(model.name):
-                    encoder_output = model._encode(input_fields=input_fields)
-                    vs_name = tf.get_variable_scope().name
-                    model._decoder.name = os.path.join(vs_name, model._decoder.name)
-                    model._target_modality.name = os.path.join(vs_name, model._target_modality.name)
-                encoder_outputs.append(encoder_output)
+        for index, model in enumerate(self._base_models):
+            encoder_output = model._encode(input_fields=input_fields)
+            encoder_outputs.append(encoder_output)
 
         helper = BeamFeedback(
-            vocab=vocab_target,
+            vocab=self._vocab_target,
             batch_size=tf.shape(input_fields[Constants.FEATURE_IDS_NAME])[0],
             maximum_labels_length=self._maximum_labels_length,
             beam_size=self._beam_size,
             alpha=self._length_penalty,
-            ensemble_weight=self.get_ensemble_weights(len(base_models)))
+            ensemble_weight=self.get_ensemble_weights(len(self._base_models)))
 
         decoders, bridges, target_to_emb_fns, outputs_to_logits_fns = \
             repeat_n_times(
-                len(base_models),
+                len(self._base_models),
                 lambda m: (m._decoder, m._encoder_decoder_bridge, m._target_to_embedding_fn, m._outputs_to_logits_fn),
-                base_models)
+                self._base_models)
 
         decoding_result = dynamic_ensemble_decode(
             decoders=decoders,
