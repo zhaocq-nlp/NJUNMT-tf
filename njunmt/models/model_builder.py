@@ -25,12 +25,15 @@ import njunmt
 from njunmt.models import EnsembleModel
 from njunmt.training.hooks import build_hooks
 from njunmt.training.optimize import optimize
+from njunmt.training.optimize import OptimizerWrapper
 from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.constants import Constants
 from njunmt.utils.constants import ModeKeys
 from njunmt.utils.misc import inspect_varname_prefix
 from njunmt.utils.misc import compute_non_padding_num
 from njunmt.utils.misc import get_model_top_scope_name
+from njunmt.utils.expert_utils import Parallelism
+from njunmt.utils.expert_utils import repeat_n_times
 
 
 class EstimatorSpec(
@@ -112,7 +115,10 @@ def _add_to_display_collection(input_fields):
     """
 
     def _add(prefix):
-        nonpadding_tokens_num, total_tokens_num = compute_non_padding_num(input_fields, prefix)
+        nonpadding_tokens_num, total_tokens_num = repeat_n_times(
+            len(input_fields), compute_non_padding_num, input_fields, prefix)
+        nonpadding_tokens_num = tf.reduce_sum(nonpadding_tokens_num)
+        total_tokens_num = tf.reduce_sum(total_tokens_num)
         tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME,
                              "input_stats/{}_nonpadding_tokens_num".format(prefix))
         tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, nonpadding_tokens_num)
@@ -126,6 +132,117 @@ def _add_to_display_collection(input_fields):
 
 
 def model_fn(
+        model_configs,
+        mode,
+        dataset,
+        name=None,
+        reuse=None,
+        distributed_mode=False,
+        is_chief=True,
+        verbose=True):
+    """ Creates NMT model for training, evaluation or inference.
+
+    Args:
+        model_configs: A dictionary of all configurations.
+        mode: A mode.
+        dataset: A `Dataset` object.
+        name: A string, the name of top-level of the variable scope.
+        reuse: Whether to reuse all variables, the parameter passed
+          to `tf.variable_scope()`.
+        verbose: Print model parameters if set True.
+        distributed_mode: Whether training is on distributed mode.
+        is_chief: Whether is the chief worker.
+
+    Returns: A `EstimatorSpec` object.
+    """
+    # Create model template function
+    model_str = model_configs["model"]
+    if model_str is None:
+        model_str = "SequenceToSequence"
+    # model_name = name or model_str.split(".")[-1]
+    model_name = get_model_top_scope_name(model_str, name)
+    if verbose:
+        tf.logging.info("Create model: {} for {}".format(
+            model_str, mode))
+    # create model instance
+    model = eval(model_str)(
+        params=model_configs["model_params"],
+        mode=mode,
+        vocab_source=dataset.vocab_source,
+        vocab_target=dataset.vocab_target,
+        name=model_name,
+        verbose=verbose)
+    # create expert_utils.Parallelism
+    parallelism = Parallelism(mode, reuse=reuse)
+
+    if mode == ModeKeys.TRAIN:
+        opt = OptimizerWrapper(model_configs["optimizer_params"])
+
+    def _build_model():
+        if verbose:
+            tf.logging.info("Building Model.......")
+        _input_fields = eval(model_str).create_input_fields(mode)
+        _model_output = model.build(_input_fields)
+        if verbose:
+            tf.logging.info("Finish Building Model.......")
+        if mode == ModeKeys.INFER:
+            # model_output is prediction
+            return _input_fields, _model_output
+        elif mode == ModeKeys.EVAL:
+            # model_output = (loss_sum, weight_sum), attention
+            return _input_fields, _model_output[0], _model_output[1]
+        else:  # mode == TRAIN
+            # model_output = loss_sum, weight_sum
+            _loss = _model_output[0] / _model_output[1]
+            grads = opt.optimizer.compute_gradients(_loss,
+                                                    colocate_gradients_with_ops=True)
+            return _input_fields, _model_output[0], _model_output[1], \
+                   _loss, grads
+
+    model_returns = parallelism(_build_model)
+    input_fields = model_returns[0]
+    if mode == ModeKeys.INFER:
+        predictions = model_returns[1]
+        return EstimatorSpec(
+            mode,
+            input_fields=input_fields,
+            predictions=predictions)
+
+    if mode == ModeKeys.EVAL:
+        loss_op, attention = model_returns[1:]
+        return EstimatorSpec(
+            mode,
+            input_fields=input_fields,
+            loss=loss_op,  # a list of tuples [(loss_sum0, weight_sum0), (loss_sum1, weight_sum1), ...]
+            # attentions for force decoding
+            predictions=attention)
+
+    assert mode == ModeKeys.TRAIN
+    loss_sums = model_returns[1]
+    weight_sums = model_returns[2]
+    loss_per_gpu = model_returns[3]
+    grads = model_returns[4]
+    loss = tf.reduce_sum(loss_sums) / tf.reduce_sum(weight_sums)
+    tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, Constants.TRAIN_LOSS_KEY_NAME)
+    tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, loss)
+    _add_to_display_collection(input_fields)
+    # build train op
+    train_op = opt.optimize(loss_per_gpu, gradients=grads)
+    # build training hooks
+    hooks = build_hooks(model_configs, distributed_mode=distributed_mode, is_chief=is_chief)
+    from njunmt.training.text_metrics_spec import build_eval_metrics
+    hooks.extend(build_eval_metrics(model_configs, dataset,
+                                    is_cheif=is_chief, model_name=model_name))
+    return EstimatorSpec(
+        mode,
+        input_fields=input_fields,
+        loss=loss,
+        train_op=train_op,
+        training_hooks=hooks,
+        training_chief_hooks=None)
+
+
+def model_fn_bak(
         model_configs,
         mode,
         dataset,

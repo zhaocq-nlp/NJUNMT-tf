@@ -135,7 +135,6 @@ class TrainingExperiment(Experiment):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
-
         estimator_spec = model_fn(model_configs=self._model_configs,
                                   mode=ModeKeys.TRAIN,
                                   dataset=dataset,
@@ -144,7 +143,11 @@ class TrainingExperiment(Experiment):
         hooks = estimator_spec.training_hooks
         # build training session
         sess = tf.train.MonitoredSession(
-            session_creator=None,
+            session_creator=tf.train.ChiefSessionCreator(
+                scaffold=tf.train.Scaffold(),
+                checkpoint_dir=None,
+                master="",
+                config=config),
             hooks=hooks)
 
         train_text_inputter = ParallelTextInputter(
@@ -153,7 +156,8 @@ class TrainingExperiment(Experiment):
             "train_labels_file",
             self._model_configs["train"]["batch_size"],
             self._model_configs["train"]["batch_tokens_size"],
-            self._model_configs["train"]["shuffle_every_epoch"])
+            self._model_configs["train"]["shuffle_every_epoch"],
+            fill_full_batch=True)
         train_data = train_text_inputter.make_feeding_data(
             input_fields=estimator_spec.input_fields,
             maximum_features_length=self._model_configs["train"]["maximum_features_length"],

@@ -17,16 +17,15 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy
-import re
 import tensorflow as tf
 from tensorflow import gfile
 
-from njunmt.inference.attention import process_attention_output
+from njunmt.inference.attention import postprocess_attention
+from njunmt.inference.attention import select_attention_sample_by_sample
 from njunmt.inference.attention import pack_batch_attention_dict
 from njunmt.inference.attention import dump_attentions
-from njunmt.utils.constants import Constants
-from njunmt.utils.misc import padding_batch_data
 from njunmt.tools.tokenizeChinese import to_chinese_char
+from njunmt.utils.expert_utils import repeat_n_times
 
 
 def _evaluate(
@@ -60,9 +59,12 @@ def evaluate(sess, loss_op, eval_data):
     losses = 0.
     weights = 0.
     for data in eval_data:
-        loss_sum, weight_sum = _evaluate(sess, data["feed_dict"], loss_op)
-        losses += loss_sum
-        weights += weight_sum
+        parallels = data["feed_dict"].pop("parallels")
+        avail = sum(numpy.array(parallels) > 0)
+        loss = _evaluate(sess, data["feed_dict"], loss_op[:avail])
+        data["feed_dict"]["parallels"] = parallels
+        losses += sum([_l[0] for _l in loss])
+        weights += sum([_l[1] for _l in loss])
     loss = losses / weights
     return loss
 
@@ -95,20 +97,25 @@ def evaluate_with_attention(
     attentions = {}
     for data in eval_data:
         _n_samples = len(data["feature_ids"])
+        parallels = data["feed_dict"].pop("parallels")
+        avail = sum(numpy.array(parallels) > 0)
         if attention_op is None:
-            loss_sum, weight_sum = _evaluate(sess, data["feed_dict"], loss_op)
+            loss = _evaluate(sess, data["feed_dict"], loss_op[:avail])
         else:
-            loss, atts = _evaluate(sess, data["feed_dict"], [loss_op, attention_op])
-            loss_sum, weight_sum = loss
+            loss, atts = _evaluate(sess, data["feed_dict"],
+                                   [loss_op[:avail], attention_op[:avail]])
             ss_strs = [vocab_source.convert_to_wordlist(ss, bpe_decoding=False)
                        for ss in data["feature_ids"]]
             tt_strs = [vocab_target.convert_to_wordlist(
                 tt, bpe_decoding=False, reverse_seq=False)
                        for tt in data["label_ids"]]
+            _attentions = sum(repeat_n_times(avail, select_attention_sample_by_sample,
+                                             atts), [])
             attentions.update(pack_batch_attention_dict(
-                num_of_samples, ss_strs, tt_strs, atts))
-        losses += loss_sum
-        weights += weight_sum
+                num_of_samples, ss_strs, tt_strs, _attentions))
+        data["feed_dict"]["parallels"] = parallels
+        losses += sum([_l[0] for _l in loss])
+        weights += sum([_l[1] for _l in loss])
         num_of_samples += _n_samples
     loss = losses / weights
     if attention_op is not None:
@@ -135,29 +142,54 @@ def _infer(
         output_attention: Whether to output attention.
 
     Returns: A tuple `(predicted_sequences, attention_scores)`.
-      The `predicted_sequences` is an ndarray of shape
-      [`top_k` * `batch_sze`, max_sequence_length].
+      The `predicted_sequences` is a list of hypothesis with
+      approx [`top_k` * `batch_sze`, sequence_length].
       The `attention_scores` is None if there is no attention
       related information in `prediction_op`.
     """
-    brief_pred_op = dict()
-    brief_pred_op["hypothesis"] = prediction_op["sorted_hypothesis"]
+    parallels = feed_dict.pop("parallels")
+    avail = sum(numpy.array(parallels) > 0)
+    extract_keys = ["sorted_hypothesis"]
     if output_attention:
-        brief_pred_op["sorted_argidx"] = prediction_op["sorted_argidx"]
-        brief_pred_op["attentions"] = prediction_op["attentions"]
-        brief_pred_op["beam_ids"] = prediction_op["beam_ids"]
-
+        assert top_k == 1
+        extract_keys.extend(["sorted_argidx", "attentions", "beam_ids"])
+    brief_pred_op = dict(zip(
+        extract_keys,
+        repeat_n_times(
+            avail,
+            lambda dd: tuple([dd[k] for k in extract_keys]),
+            prediction_op[:avail])))
     predict_out = sess.run(brief_pred_op, feed_dict=feed_dict)
-    num_samples = predict_out["hypothesis"].shape[0]
-    beam_size = num_samples // batch_size
-    # [batch_, beam_]
-    batch_beam_pos = numpy.tile(numpy.arange(batch_size) * beam_size, [beam_size, 1]).transpose()
-    batch_beam_pos = numpy.reshape(batch_beam_pos[:, :top_k], -1)
-    if output_attention:
-        argidx = predict_out.pop("sorted_argidx")[batch_beam_pos]
-        attentions = process_attention_output(predict_out, argidx)
-        return predict_out["hypothesis"][batch_beam_pos, :], attentions
-    return predict_out["hypothesis"][batch_beam_pos, :], None
+    feed_dict["parallels"] = parallels
+    total_samples = sum(
+        repeat_n_times(avail,
+                       lambda p: p.shape[0],
+                       predict_out["sorted_hypothesis"]))
+    beam_size = total_samples // batch_size
+
+    def _post_process_hypo(pred, **kwargs):
+        _num_samples = pred.shape[0]
+        _batch_size = _num_samples // beam_size
+        batch_beam_pos = numpy.tile(numpy.arange(_batch_size) * beam_size, [beam_size, 1]).transpose()
+        batch_beam_pos = numpy.reshape(batch_beam_pos[:, :top_k], -1)
+        if output_attention:
+            atts = postprocess_attention(
+                beam_ids=kwargs["beam_ids"],
+                attention_dict=kwargs["attentions"],
+                gather_idx=kwargs["sorted_argidx"][batch_beam_pos])
+            return pred[batch_beam_pos, :].tolist(), atts
+        return pred[batch_beam_pos, :].tolist(), []
+
+    hypothesises, attentions = repeat_n_times(
+        avail,
+        _post_process_hypo,
+        predict_out["sorted_hypothesis"],
+        beam_ids=predict_out.get("beam_ids", None),
+        attentions=predict_out.get("attentions", None),
+        sorted_argidx=predict_out.get("sorted_argidx", None))
+    hypothesis = sum(hypothesises, [])
+    attention = sum(attentions, [])
+    return hypothesis, attention
 
 
 def infer(
@@ -206,10 +238,10 @@ def infer(
 
         sources.extend(x_str)
         hypothesis.extend([delimiter.join(vocab_target.convert_to_wordlist(prediction[sample_idx]))
-                           for sample_idx in range(prediction.shape[0])])
+                           for sample_idx in range(len(prediction))])
         if output_attention and att is not None:
             candidate_tokens = [vocab_target.convert_to_wordlist(
-                prediction[idx, :], bpe_decoding=False, reverse_seq=False)
+                prediction[idx], bpe_decoding=False, reverse_seq=False)
                                 for idx in range(len(x_str))]
 
             attentions.update(pack_batch_attention_dict(

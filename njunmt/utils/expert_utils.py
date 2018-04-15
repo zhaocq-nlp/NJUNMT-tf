@@ -289,6 +289,10 @@ class Parallelism(object):
         self._reuse = reuse
 
     @property
+    def devices(self):
+        return self._devices
+
+    @property
     def n(self):
         return self._n
 
@@ -358,18 +362,19 @@ class Parallelism(object):
 
             if self._mode == ModeKeys.TRAIN:
                 custom_getter = daisy_chain_getter
-                device_setter = balanced_device_setter
+                # device_setter = balanced_device_setter
+                device_setter = device
             else:
                 custom_getter = None
                 device_setter = device
 
-            with tf.name_scope("parallel_{}".format(device_id)):
-                with tf.variable_scope(
-                        tf.get_variable_scope(),
-                        reuse=True if device_id > 0 or self._reuse else None,
-                        custom_getter=custom_getter):
-                    with tf.device(device_setter):
-                        outputs.append(fns[device_id](*my_args[device_id], **my_kwargs[device_id]))
+            # with tf.name_scope("parallel_{}".format(device_id)):
+            with tf.variable_scope(
+                    tf.get_variable_scope(),
+                    reuse=True if device_id > 0 or self._reuse else None,
+                    custom_getter=custom_getter):
+                with tf.device(device_setter):
+                    outputs.append(fns[device_id](*my_args[device_id], **my_kwargs[device_id]))
 
         if isinstance(outputs[0], tuple):
             outputs = list(zip(*outputs))

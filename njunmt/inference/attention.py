@@ -18,20 +18,22 @@ import tensorflow as tf
 from tensorflow import gfile
 
 
-def process_attention_output(predict_out, gather_idx):
+def postprocess_attention(beam_ids, attention_dict, gather_idx):
     """ Processes attention information.
 
     Args:
-        predict_out: A dict of prediction output (with numpy.ndarray).
+        beam_ids: beam ids returned by predictions, a numpy.ndarray.
+        attention_dict: A dict of attention results (with numpy.ndarray).
         gather_idx: The gathered index(es) to return.
 
     Returns: Attention information.
     """
-    beam_ids = predict_out["beam_ids"]
-    all_attentions = dict()
-    for k_att, v_att in predict_out["attentions"].items():
+    new_attention_dict = dict()
+    for k_att, v_att in attention_dict.items():
         if "encoder_self_attention" in k_att:
-            all_attentions[k_att] = v_att
+            # with shape [batch_size, num_heads, n_timesteps_trg, n_timesteps_src]
+            # encoder self attention is not stacked by beam size
+            new_attention_dict[k_att] = v_att
         else:
             # for encdec_attention or decoder self attention
             # [n_timesteps_trg, batch_size * beam_size, n_timesteps_src] if ndims=3
@@ -47,12 +49,66 @@ def process_attention_output(predict_out, gather_idx):
                     gathered_att[idx, :, :, :] = v_att[idx]
                 else:
                     raise ValueError
-            if num_shapes == 3:
-                # [n_timesteps_trg, batch_size, n_timesteps_src]
-                all_attentions[k_att] = gathered_att[:, gather_idx, :]
-            else:
-                # [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
-                all_attentions[k_att] = gathered_att[:, gather_idx, :, :]
+            # if num_shapes == 3:
+            # [n_timesteps_trg, batch_size, n_timesteps_src]
+            # else:
+            # [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
+            new_attention_dict[k_att] = gathered_att[:, gather_idx]
+    return select_attention_sample_by_sample(new_attention_dict)
+
+
+def select_attention_sample_by_sample(attention_dict):
+    """ The format of `attention_dict` is :
+        { "attention_name": attention_matrix,
+        ... }
+        The shapes are described as follows:
+        Attention Name(type)         Shape
+        encoder_self_attention      [batch_size, num_heads, n_timesteps_src, n_timesteps_src]
+        decoder_self_attention      [n_timesteps_trg, batch_size, num_heads, n_timesteps_trg]
+        encoder_decoder_attention   [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
+                                    or [n_timesteps_trg, batch_size, n_timesteps_src]
+
+        The return values is a list:
+            [sample0's attention, sample1's attention, ...].
+            For each attention, it is a dict like:
+            { "attention_name": attention_matrix,
+            ... }
+            The shapes are described as follows:
+            Attention Name(type)         Shape
+            encoder_self_attention      [num_heads, n_timesteps_src, n_timesteps_src]
+            decoder_self_attention      [n_timesteps_trg, num_heads, n_timesteps_trg]
+            encoder_decoder_attention   [n_timesteps_trg, num_heads, n_timesteps_src]
+                                        or [n_timesteps_trg, n_timesteps_src]
+    Args:
+        attention_dict: A dict.
+
+    Returns: A list of dicts.
+    """
+    num_samples = None
+    all_attentions = []
+
+    def emptys_fill_dict():
+        assert num_samples
+        for _ in range(num_samples):
+            all_attentions.append(dict())
+
+    for k_att, v_att in attention_dict.items():
+        if "encoder_self_attention" in k_att:
+            # with shape [batch_size, num_heads, n_timesteps_trg, n_timesteps_src]
+            if not num_samples:
+                num_samples = v_att.shape[0]
+                emptys_fill_dict()
+            for i in range(num_samples):
+                all_attentions[i][k_att] = v_att[i]
+        else:
+            # for encdec_attention or decoder self attention
+            # [n_timesteps_trg, batch_size, n_timesteps_src] if ndims=3
+            # [n_timesteps_trg, batch_size, num_heads, n_timesteps_src] if ndims=4
+            if not num_samples:
+                num_samples = v_att.shape[1]
+                emptys_fill_dict()
+            for i in range(num_samples):
+                all_attentions[i][k_att] = v_att[:, i]
     return all_attentions
 
 
@@ -67,48 +123,48 @@ def pack_batch_attention_dict(
         base_index: An integer.
         source_tokens: A list of samples. Each sample is a list of string tokens.
         candidate_tokens: A list of sample candidate. Each sample candidate is a list of string tokens.
-        attentions: A dict of attentions.
+        attentions: A list of attentions.
 
     Returns: A packed dictionary of attention information for visualization.
     """
     ret_attentions = dict()
-    for idx in range(len(source_tokens)):
-        att = {"source": " ".join(source_tokens[idx]),
-               "translation": " ".join(candidate_tokens[idx]),
+    for idx, (src, hypo, attention) in enumerate(
+            zip(source_tokens, candidate_tokens, attentions)):
+        att = {"source": " ".join(src),
+               "translation": " ".join(hypo),
                "attentions": []}
-        for key, val in attentions.items():
+        for key, val in attention.items():
             if "encoder_self_attention" in key:
-                len_src = len(source_tokens[idx]) + 1
-                len_trg = len(source_tokens[idx]) + 1
+                len_src = len(src) + 1
+                len_trg = len(src) + 1
             elif "encoder_decoder_attention" in key:
-                len_src = len(source_tokens[idx]) + 1
-                len_trg = len(candidate_tokens[idx]) + 1
+                len_src = len(src) + 1
+                len_trg = len(hypo) + 1
             elif "decoder_self_attention" in key:
-                len_src = len(candidate_tokens[idx]) + 1
-                len_trg = len(candidate_tokens[idx]) + 1
+                len_src = len(hypo) + 1
+                len_trg = len(hypo) + 1
             else:
                 raise NotImplementedError
             num_shapes = len(val.shape)
-            if num_shapes == 3:
-                # [n_timesteps_trg, batch_size, n_timesteps_src]
+            if num_shapes == 2:
+                # [n_timesteps_trg, n_timesteps_src]
                 att["attentions"].append({
                     "name": key,
-                    "value": val[:len_trg, idx, :len_src].tolist(),
+                    "value": val[:len_trg, :len_src].tolist(),
                     "type": "simple"})
-            elif num_shapes == 4:
+            elif num_shapes == 3:
                 if "decoder" in key:
-                    # with shape [n_timesteps_trg, batch_size, num_heads, n_timesteps_src]
-                    #  after slice [n_timesteps_trg, num_heads, n_timesteps_src]
+                    # with shape [n_timesteps_trg, num_heads, n_timesteps_src]
                     #    transpose to [num_heads, n_timesteps_trg, n_timesteps_src]
                     att["attentions"].append({
                         "name": key,
-                        "value": (val[:len_trg, idx, :, :len_src]).transpose([1, 0, 2]).tolist(),
+                        "value": (val[:len_trg, :, :len_src]).transpose([1, 0, 2]).tolist(),
                         "type": "multihead"})
                 else:
-                    # with shape [batch_size, num_heads, n_timesteps_trg, n_timesteps_src]
+                    # with shape [num_heads, n_timesteps_trg, n_timesteps_src]
                     att["attentions"].append({
                         "name": key,
-                        "value": val[idx, :, :len_trg, :len_src].tolist(),
+                        "value": val[:, :len_trg, :len_src].tolist(),
                         "type": "multihead"})
             else:
                 raise NotImplementedError

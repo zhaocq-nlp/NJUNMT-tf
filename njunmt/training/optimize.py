@@ -26,23 +26,6 @@ from njunmt.utils.constants import ModeKeys
 from njunmt.utils.constants import Constants
 
 
-def optimize(loss, opt_params, variables=None, colocate_gradients_with_ops=False):
-    """ Minimizes loss.
-
-    Args:
-        loss: The loss Tensor.
-        opt_params: A dictionary of the parameters of the optimizer.
-        variables: A list of variables to optimize or None to use all
-          trainable variables.
-        colocate_gradients_with_ops: Argument passed to
-          `tf.contrib.layers.optimize_loss`
-
-    Returns: The train_op.
-    """
-    opt = OptimizerWrapper(opt_params)
-    return opt.optimize(loss, variables, colocate_gradients_with_ops)
-
-
 def _get_optimizer(name, **params):
     """ Create optimizer.
 
@@ -64,8 +47,44 @@ def _get_optimizer(name, **params):
     raise ValueError("Unknown optimizer name: {}".format(name))
 
 
+def average_gradients(tower_grads):
+    """Calculate the average gradient for each shared variable across all towers.
+    Note that this function provides a synchronization point across all towers.
+    Args:
+        tower_grads: List of lists of (gradient, variable) tuples. The outer list
+        is over individual gradients. The inner list is over the gradient
+        calculation for each tower.
+    Returns:
+        List of pairs of (gradient, variable) where the gradient has been averaged
+        across all towers.
+    """
+    average_grads = []
+    for grad_and_vars in zip(*tower_grads):
+        # Note that each grad_and_vars looks like the following:
+        #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+        grads = []
+        for g, _ in grad_and_vars:
+            # Add 0 dimension to the gradients to represent the tower.
+            expanded_g = tf.expand_dims(g, 0)
+
+            # Append on a 'tower' dimension which we will average over below.
+            grads.append(expanded_g)
+        # Average over the 'tower' dimension.
+        grad = tf.concat(axis=0, values=grads)
+        grad = tf.reduce_mean(grad, 0)
+
+        # Keep in mind that the Variables are redundant because they are shared
+        # across towers. So .. we will just return the first tower's pointer to
+        # the Variable.
+        v = grad_and_vars[0][1]
+        grad_and_var = (grad, v)
+        average_grads.append(grad_and_var)
+    return average_grads
+
+
 class OptimizerWrapper(Configurable):
     """ Define the wrapper class for creating optimizer. """
+
     def __init__(self, params):
         """ Initializes the parameters of the optimizer.
 
@@ -75,6 +94,12 @@ class OptimizerWrapper(Configurable):
         super(OptimizerWrapper, self).__init__(
             params=params, mode=ModeKeys.TRAIN,
             name=None, verbose=True)
+        self._optimizer = self._create_optimizer()
+
+    @property
+    def optimizer(self):
+        """ Returns the optimizer. """
+        return self._optimizer
 
     @staticmethod
     def default_params():
@@ -100,18 +125,8 @@ class OptimizerWrapper(Configurable):
             "optimizer.sync_replicas_to_aggregate": 0,
         }
 
-    def optimize(self, loss, variables=None, colocate_gradients_with_ops=False):
-        """ Creates the optimizer with learning rate decaying, optimizes
-        loss and return a train_op.
-
-        Args:
-            loss: The loss Tensor.
-            variables: A list of variables to optimize or None to use all trainable variables.
-            colocate_gradients_with_ops: Argument passed to
-              `tf.contrib.layers.optimize_loss`
-
-        Returns: The train_op.
-        """
+    def _create_optimizer(self):
+        """ Creates the optimizer. """
         learning_rate = tf.get_variable(
             Constants.LEARNING_RATE_VAR_NAME,
             shape=(), dtype=tf.float32,
@@ -137,6 +152,25 @@ class OptimizerWrapper(Configurable):
         # create optimizer
         optimizer = _get_optimizer(name, learning_rate=learning_rate,
                                    **self.params["optimizer.params"])
+        return optimizer
+
+    def optimize(self,
+                 loss,
+                 variables=None,
+                 gradients=None,
+                 colocate_gradients_with_ops=False):
+        """ Creates the optimizer with learning rate decaying, optimizes
+        loss and return a train_op.
+
+        Args:
+            loss: A list of loss Tensors.
+            variables: A list of variables to optimize or None to use all trainable variables.
+            gradients: A list of gradients to be averaged.
+            colocate_gradients_with_ops: Argument passed to
+              `tf.contrib.layers.optimize_loss`.
+
+        Returns: The train_op.
+        """
 
         def _clip_gradients(grads_and_vars):
             """Clips gradients by global norm."""
@@ -145,15 +179,42 @@ class OptimizerWrapper(Configurable):
                 gradients, self.params["optimizer.clip_gradients"])
             return list(zip(clipped_gradients, variables))
 
-        train_op = tf.contrib.layers.optimize_loss(
-            loss=loss,
-            global_step=global_step_tensor,
-            learning_rate=None,  # self.params["optimizer.learning_rate"],
-            learning_rate_decay_fn=None,
-            clip_gradients=_clip_gradients if self.params["optimizer.clip_gradients"] > 0. else None,
-            variables=variables,
-            optimizer=optimizer,
-            summaries=["learning_rate", "loss"],
-            colocate_gradients_with_ops=colocate_gradients_with_ops)
+        if len(loss) == 1:
+            train_op = tf.contrib.layers.optimize_loss(
+                loss=loss[0],
+                global_step=tf.train.get_global_step(),
+                learning_rate=None,  # self.params["optimizer.learning_rate"],
+                learning_rate_decay_fn=None,
+                clip_gradients=_clip_gradients if self.params["optimizer.clip_gradients"] > 0. else None,
+                variables=variables,
+                optimizer=self._optimizer,
+                summaries=["learning_rate", "loss"],
+                colocate_gradients_with_ops=colocate_gradients_with_ops)
+        elif gradients is not None:
 
+            def _comp_gradient(_loss):
+                print(_loss)
+                _loss = tf.convert_to_tensor(_loss)
+                print(_loss)
+                return self._optimizer.compute_gradients(
+                    _loss,
+                    variables,
+                    colocate_gradients_with_ops=colocate_gradients_with_ops)
+
+            # average gradients
+            # [[(var0, grad0_0), (var1, grad1_0), ...], [(var0, grad0_1, var1, grad1_1), ...], ...]
+            with tf.variable_scope("OptimizeLoss"):
+                # gradvar_list = parallelism(_comp_gradient, loss)
+                # grads_and_vars = average_gradients(gradvar_list)
+                grads_and_vars = average_gradients(gradients)
+                if self.params["optimizer.clip_gradients"] > 0:
+                    grads_and_vars = _clip_gradients(grads_and_vars)
+                # Create gradient updates.
+                grad_updates = self._optimizer.apply_gradients(
+                    grads_and_vars,
+                    global_step=tf.train.get_global_step(),
+                    name="train")
+            return grad_updates
+        else:
+            raise NotImplementedError
         return train_op

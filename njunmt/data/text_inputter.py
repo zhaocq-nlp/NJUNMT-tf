@@ -27,6 +27,7 @@ from njunmt.utils.constants import concat_name
 from njunmt.utils.misc import open_file, close_file
 from njunmt.utils.misc import shuffle_data
 from njunmt.utils.misc import padding_batch_data
+from njunmt.utils.expert_utils import repeat_n_times
 
 
 def read_line_with_filter(
@@ -87,10 +88,29 @@ def pack_feed_dict(name_prefixs, origin_datas, paddings, input_fields):
     data["feed_dict"] = dict()
 
     def map_fn(n, d, p):
-        x, x_len = padding_batch_data(d, p)
+        # n: name prefix
+        # d: data list
+        # p: padding symbol
         data[concat_name(n, Constants.IDS_NAME)] = d
-        data["feed_dict"][input_fields[concat_name(n, Constants.IDS_NAME)]] = x
-        data["feed_dict"][input_fields[concat_name(n, Constants.LENGTH_NAME)]] = x_len
+        n_samples = len(d)
+        n_devices = len(input_fields)
+        n_samples_per_gpu = n_samples // n_devices
+        if n_samples % n_devices > 0:
+            n_samples_per_gpu += 1
+
+        def _feed_batchs(_start_idx, _inpf):
+            if _start_idx * n_samples_per_gpu >= n_samples:
+                return 0
+            x, x_len = padding_batch_data(
+                d[_start_idx * n_samples_per_gpu:(_start_idx + 1) * n_samples_per_gpu], p)
+            data["feed_dict"][_inpf[concat_name(n, Constants.IDS_NAME)]] = x
+            data["feed_dict"][_inpf[concat_name(n, Constants.LENGTH_NAME)]] = x_len
+            return len(x_len)
+
+        parallels = repeat_n_times(
+            n_devices, _feed_batchs,
+            range(n_devices), input_fields)
+        data["feed_dict"]["parallels"] = parallels
 
     if isinstance(name_prefixs, six.string_types):
         map_fn(name_prefixs, origin_datas, paddings)
@@ -219,6 +239,7 @@ class ParallelTextInputter(TextInputter):
                  batch_size=None,
                  batch_tokens_size=None,
                  shuffle_every_epoch=None,
+                 fill_full_batch=False,
                  bucketing=True):
         """ Initializes the parameters for this inputter.
 
@@ -235,6 +256,8 @@ class ParallelTextInputter(TextInputter):
               together by approximate sequence length.
             shuffle_every_epoch: A string type. If provided, use it as postfix
               of shuffled data file name.
+            fill_full_batch: Whether to ensure each batch of data has `batch_size`
+              of datas.
             bucketing: Whether to sort the sentences by length of labels.
 
         Raises:
@@ -247,6 +270,7 @@ class ParallelTextInputter(TextInputter):
         self._batch_size = batch_size
         self._batch_tokens_size = batch_tokens_size
         self._shuffle_every_epoch = shuffle_every_epoch
+        self._fill_full_batch = fill_full_batch
         if not hasattr(dataset, features_field_name):
             raise ValueError("dataset object has no attribute named \"{}\""
                              .format(features_field_name))
@@ -292,6 +316,10 @@ class ParallelTextInputter(TextInputter):
 
         Returns: An iterable instance or a list of iterable instances.
         """
+        if in_memory and self._fill_full_batch:
+            raise ValueError(
+                "in_memory option with _SmallParallelData fn now only deal with evaluation data. "
+                "fill_full_batch for ParallelTextInputter is only for training data.")
         if self._features_file is None or self._labels_file is None:
             raise ValueError("Both _features_file and _labels_file should be provided.")
         if isinstance(self._features_file, list):
@@ -472,6 +500,10 @@ class ParallelTextInputter(TextInputter):
                     self._features_buffer = self._features_buffer[0]
                 self._features_len_buffer = [len(s) for s in self._features_buffer]
                 self._labels_len_buffer = [len(t) for t in self._labels_buffer]
+            if self._parent._fill_full_batch and len(self._features_buffer) < self._parent._batch_size:
+                self._end_of_data = False
+                self._reset()
+                raise StopIteration
             local_batch_size = self._parent._batch_size
             if self._parent._batch_tokens_size is not None:  # batching data by num of tokens
                 sum_s = numpy.sum(self._features_len_buffer[: local_batch_size])
@@ -502,11 +534,14 @@ class ParallelTextInputter(TextInputter):
                 self._end_of_data = False
                 self._reset()
                 raise StopIteration
-            return pack_feed_dict(
+            ret_data = pack_feed_dict(
                 name_prefixs=[Constants.FEATURE_NAME_PREFIX, Constants.LABEL_NAME_PREFIX],
                 origin_datas=[features, labels],
                 paddings=[self._parent._features_padding, self._parent._labels_padding],
                 input_fields=self._input_fields)
+            if self._parent._fill_full_batch:
+                ret_data["feed_dict"].pop("parallels")
+            return ret_data
 
         def _shuffle_and_reopen(self):
             """ shuffle features & labels file. """

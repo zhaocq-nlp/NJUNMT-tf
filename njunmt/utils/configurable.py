@@ -427,6 +427,11 @@ class Configurable(object):
         """ Returns the verbose property. """
         return self._verbose
 
+    @verbose.setter
+    def verbose(self, val):
+        """ Set the verbose property. """
+        self._verbose = val
+
     @property
     def mode(self):
         """Returns the mode. """
