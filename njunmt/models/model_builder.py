@@ -24,7 +24,6 @@ import os
 import njunmt
 from njunmt.models import EnsembleModel
 from njunmt.training.hooks import build_hooks
-from njunmt.training.optimize import optimize
 from njunmt.training.optimize import OptimizerWrapper
 from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.constants import Constants
@@ -240,89 +239,6 @@ def model_fn(
         train_op=train_op,
         training_hooks=hooks,
         training_chief_hooks=None)
-
-
-def model_fn_bak(
-        model_configs,
-        mode,
-        dataset,
-        name=None,
-        reuse=None,
-        distributed_mode=False,
-        is_chief=True,
-        verbose=True):
-    """ Creates NMT model for training, evaluation or inference.
-
-    Args:
-        model_configs: A dictionary of all configurations.
-        mode: A mode.
-        dataset: A `Dataset` object.
-        name: A string, the name of top-level of the variable scope.
-        reuse: Whether to reuse all variables, the parameter passed
-          to `tf.variable_scope()`.
-        verbose: Print model parameters if set True.
-        distributed_mode: Whether training is on distributed mode.
-        is_chief: Whether is the chief worker.
-
-    Returns: A `EstimatorSpec` object.
-    """
-    # Create model template function
-    model_str = model_configs["model"]
-    if model_str is None:
-        model_str = "SequenceToSequence"
-    # model_name = name or model_str.split(".")[-1]
-    model_name = get_model_top_scope_name(model_str, name)
-    if verbose:
-        tf.logging.info("Create model: {} for {}".format(
-            model_str, mode))
-    model = eval(model_str)(
-        params=model_configs["model_params"],
-        mode=mode,
-        vocab_source=dataset.vocab_source,
-        vocab_target=dataset.vocab_target,
-        name=model_name,
-        verbose=verbose)
-    input_fields = eval(model_str).create_input_fields(mode)
-    with tf.variable_scope("", reuse=reuse):
-        model_output = model.build(input_fields=input_fields)
-    # training mode
-    if mode == ModeKeys.TRAIN:
-        loss_sum, weight_sum = model_output
-        loss = loss_sum / tf.to_float(weight_sum)
-        # Register the training loss in a collection so that hooks can easily fetch them
-        tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, Constants.TRAIN_LOSS_KEY_NAME)
-        tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, loss)
-        _add_to_display_collection(input_fields)
-        # build train op
-        train_op = optimize(loss, model_configs["optimizer_params"])
-        # build training hooks
-        hooks = build_hooks(model_configs, distributed_mode=distributed_mode, is_chief=is_chief)
-        from njunmt.training.text_metrics_spec import build_eval_metrics
-        hooks.extend(build_eval_metrics(model_configs, dataset,
-                                        is_cheif=is_chief, model_name=model_name))
-
-        return EstimatorSpec(
-            mode,
-            input_fields=input_fields,
-            loss=loss,
-            train_op=train_op,
-            training_hooks=hooks,
-            training_chief_hooks=None)
-
-    # evaluation mode
-    if mode == ModeKeys.EVAL:
-        return EstimatorSpec(
-            mode,
-            input_fields=input_fields,
-            loss=model_output[0],
-            # attentions for force decoding
-            predictions=model_output[1])
-
-    assert mode == ModeKeys.INFER
-    return EstimatorSpec(
-        mode,
-        input_fields=input_fields,
-        predictions=model_output)
 
 
 def model_fn_ensemble(
