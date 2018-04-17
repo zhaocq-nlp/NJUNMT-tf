@@ -12,7 +12,7 @@ model_params:
     timing:
   source.reverse: false
   initializer: random_uniform
-  encoder.class: njunmt.encoders.StackBidirectionalRNNEncoder
+  encoder.class: njunmt.encoders.BiUnidirectionalRNNEncoder
   encoder.params:
     rnn_cell:
       cell_class: GRUCell
@@ -20,7 +20,7 @@ model_params:
         num_units: 9
       dropout_input_keep_prob: 0.9
       dropout_state_keep_prob: 1.0
-      num_layers: 1
+      num_layers: 2
 
   bridge.class: VariableBridge
   bridge.params:
