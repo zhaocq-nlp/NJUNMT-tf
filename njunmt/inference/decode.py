@@ -171,7 +171,9 @@ def _infer(
         _num_samples = pred.shape[0]
         _batch_size = _num_samples // beam_size
         batch_beam_pos = numpy.tile(numpy.arange(_batch_size) * beam_size, [beam_size, 1]).transpose()
-        batch_beam_pos = numpy.reshape(batch_beam_pos[:, :top_k], -1)
+        batch_beam_topk_add = numpy.tile(numpy.arange(top_k), [batch_beam_pos.shape[0], 1])
+        batch_beam_pos = numpy.reshape(
+            batch_beam_pos[:, :top_k] + batch_beam_topk_add, -1)
         if output_attention:
             atts = postprocess_attention(
                 beam_ids=kwargs["beam_ids"],
