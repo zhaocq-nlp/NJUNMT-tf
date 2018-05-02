@@ -179,34 +179,26 @@ class OptimizerWrapper(Configurable):
                 gradients, self.params["optimizer.clip_gradients"])
             return list(zip(clipped_gradients, variables))
 
-        if len(loss) == 1:
-            train_op = tf.contrib.layers.optimize_loss(
-                loss=loss[0],
-                global_step=tf.train.get_global_step(),
-                learning_rate=None,  # self.params["optimizer.learning_rate"],
-                learning_rate_decay_fn=None,
-                clip_gradients=_clip_gradients if self.params["optimizer.clip_gradients"] > 0. else None,
-                variables=variables,
-                optimizer=self._optimizer,
-                summaries=["learning_rate", "loss"],
-                colocate_gradients_with_ops=colocate_gradients_with_ops)
-        elif gradients is not None:
-
-            def _comp_gradient(_loss):
-                print(_loss)
-                _loss = tf.convert_to_tensor(_loss)
-                print(_loss)
-                return self._optimizer.compute_gradients(
-                    _loss,
-                    variables,
-                    colocate_gradients_with_ops=colocate_gradients_with_ops)
-
+        # if len(loss) == 1:
+        #     train_op = tf.contrib.layers.optimize_loss(
+        #         loss=loss[0],
+        #         global_step=tf.train.get_global_step(),
+        #         learning_rate=None,  # self.params["optimizer.learning_rate"],
+        #         learning_rate_decay_fn=None,
+        #         clip_gradients=_clip_gradients if self.params["optimizer.clip_gradients"] > 0. else None,
+        #         variables=variables,
+        #         optimizer=self._optimizer,
+        #         summaries=["learning_rate", "loss"],
+        #         colocate_gradients_with_ops=colocate_gradients_with_ops)
+        # elif gradients is not None:
+        if True:
             # average gradients
             # [[(var0, grad0_0), (var1, grad1_0), ...], [(var0, grad0_1, var1, grad1_1), ...], ...]
             with tf.variable_scope("OptimizeLoss"):
-                # gradvar_list = parallelism(_comp_gradient, loss)
-                # grads_and_vars = average_gradients(gradvar_list)
-                grads_and_vars = average_gradients(gradients)
+                if len(gradients) == 1:
+                    grads_and_vars = gradients[0]
+                else:
+                    grads_and_vars = average_gradients(gradients)
                 if self.params["optimizer.clip_gradients"] > 0:
                     grads_and_vars = _clip_gradients(grads_and_vars)
                 # Create gradient updates.
@@ -217,4 +209,4 @@ class OptimizerWrapper(Configurable):
             return grad_updates
         else:
             raise NotImplementedError
-        return train_op
+

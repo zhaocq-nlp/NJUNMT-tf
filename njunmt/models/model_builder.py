@@ -193,8 +193,10 @@ def model_fn(
         else:  # mode == TRAIN
             # model_output = loss_sum, weight_sum
             _loss = _model_output[0] / _model_output[1]
-            grads = opt.optimizer.compute_gradients(_loss,
-                                                    colocate_gradients_with_ops=True)
+            grads = opt.optimizer.compute_gradients(
+                _loss,
+                var_list=tf.trainable_variables(),
+                colocate_gradients_with_ops=True)
             return _input_fields, _model_output[0], _model_output[1], \
                    _loss, grads
 

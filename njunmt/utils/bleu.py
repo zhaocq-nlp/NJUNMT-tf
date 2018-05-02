@@ -96,6 +96,30 @@ def corpus_bleu(hypothesis, references, max_n=4):
     return [bleu] + bleu_scores, [brevity_penalty, total_len_hyp / total_len_ref, total_len_hyp, total_len_ref]
 
 
+def sentence_bleu(hypothesis, references, max_n=4):
+    clip_count, count, total_len_hyp, total_len_ref = bleu_count(hypothesis, references, max_n=max_n)
+    brevity_penalty = 1.0
+    bleu_scores = []
+    bleu = 0
+    for n in range(max_n):
+        bleu_scores.append((clip_count[n] + 0.1) / (count[n] + 0.1)) # smoothing
+    if total_len_hyp < total_len_ref:
+        brevity_penalty = math.exp(1 - total_len_ref / total_len_hyp)
+
+    def my_log(x):
+        if x == 0:
+            return -9999999999.0
+        elif x < 0:
+            raise Exception("Value Error")
+        return math.log(x)
+
+    log_bleu = 0.0
+    for n in range(max_n):
+        log_bleu += my_log(bleu_scores[n])
+    bleu = brevity_penalty * math.exp(log_bleu / float(max_n))
+    return [bleu] + bleu_scores, [brevity_penalty, total_len_hyp / total_len_ref, total_len_hyp, total_len_ref]
+
+
 def incremental_bleu_count(hypothesis, references, max_n=4):
     ret_len_hyp = []
     ret_len_ref = []

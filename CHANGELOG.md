@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 - WMT2017 EN<->DE benchmark.
 - Load pretrained model.
 - Layer normalization for fflayer and LayerNormLSTMCell
+- Multi-GPU inference and evaluation (something wrong with training)
 
 ### Changed
 - Default loss function.
