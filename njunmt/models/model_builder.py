@@ -228,7 +228,7 @@ def model_fn(
     tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, loss)
     _add_to_display_collection(input_fields)
     # build train op
-    train_op = opt.optimize(loss_per_gpu, gradients=grads)
+    train_op = opt.optimize(loss_per_gpu, grads_and_vars=grads)
     # build training hooks
     hooks = build_hooks(model_configs, distributed_mode=distributed_mode, is_chief=is_chief)
     from njunmt.training.text_metrics_spec import build_eval_metrics

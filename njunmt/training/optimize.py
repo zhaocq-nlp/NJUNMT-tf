@@ -156,21 +156,18 @@ class OptimizerWrapper(Configurable):
 
     def optimize(self,
                  loss,
-                 variables=None,
-                 gradients=None,
-                 colocate_gradients_with_ops=False):
+                 grads_and_vars=None):
         """ Creates the optimizer with learning rate decaying, optimizes
         loss and return a train_op.
 
         Args:
             loss: A list of loss Tensors.
             variables: A list of variables to optimize or None to use all trainable variables.
-            gradients: A list of gradients to be averaged.
-            colocate_gradients_with_ops: Argument passed to
-              `tf.contrib.layers.optimize_loss`.
+            grads_and_vars: A list of (gradients, variables) to be averaged.
 
         Returns: The train_op.
         """
+        assert len(loss) == len(grads_and_vars)
 
         def _clip_gradients(grads_and_vars):
             """Clips gradients by global norm."""
@@ -179,34 +176,21 @@ class OptimizerWrapper(Configurable):
                 gradients, self.params["optimizer.clip_gradients"])
             return list(zip(clipped_gradients, variables))
 
-        # if len(loss) == 1:
-        #     train_op = tf.contrib.layers.optimize_loss(
-        #         loss=loss[0],
-        #         global_step=tf.train.get_global_step(),
-        #         learning_rate=None,  # self.params["optimizer.learning_rate"],
-        #         learning_rate_decay_fn=None,
-        #         clip_gradients=_clip_gradients if self.params["optimizer.clip_gradients"] > 0. else None,
-        #         variables=variables,
-        #         optimizer=self._optimizer,
-        #         summaries=["learning_rate", "loss"],
-        #         colocate_gradients_with_ops=colocate_gradients_with_ops)
-        # elif gradients is not None:
-        if True:
-            # average gradients
-            # [[(var0, grad0_0), (var1, grad1_0), ...], [(var0, grad0_1, var1, grad1_1), ...], ...]
-            with tf.variable_scope("OptimizeLoss"):
-                if len(gradients) == 1:
-                    grads_and_vars = gradients[0]
-                else:
-                    grads_and_vars = average_gradients(gradients)
-                if self.params["optimizer.clip_gradients"] > 0:
-                    grads_and_vars = _clip_gradients(grads_and_vars)
-                # Create gradient updates.
-                grad_updates = self._optimizer.apply_gradients(
-                    grads_and_vars,
-                    global_step=tf.train.get_global_step(),
-                    name="train")
-            return grad_updates
-        else:
-            raise NotImplementedError
+        # average gradients
+        # [[(var0, grad0_0), (var1, grad1_0), ...], [(var0, grad0_1, var1, grad1_1), ...], ...]
+        with tf.variable_scope("OptimizeLoss"):
+            if len(loss) == 1:
+                loss = loss[0]
+                grads_and_vars = grads_and_vars[0]
+            else:
+                grads_and_vars = average_gradients(grads_and_vars)
+            if self.params["optimizer.clip_gradients"] > 0:
+                grads_and_vars = _clip_gradients(grads_and_vars)
+            # Create gradient updates.
+            grad_updates = self._optimizer.apply_gradients(
+                grads_and_vars,
+                global_step=tf.train.get_global_step(),
+                name="train")
+        return grad_updates
+
 
