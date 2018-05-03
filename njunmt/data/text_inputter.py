@@ -323,14 +323,13 @@ class ParallelTextInputter(TextInputter):
         if self._features_file is None or self._labels_file is None:
             raise ValueError("Both _features_file and _labels_file should be provided.")
         if isinstance(self._features_file, list):
-            return [self._make_feeding_data(f, l, input_fields,
-                                            maximum_features_length,
-                                            maximum_labels_length, in_memory)
+            return [self._make_feeding_data(
+                f, l, input_fields, maximum_features_length,
+                maximum_labels_length, in_memory)
                     for f, l in zip(self._features_file, self._labels_file)]
         return self._make_feeding_data(
-            self._features_file, self._labels_file,
-            input_fields, maximum_features_length,
-            maximum_labels_length, in_memory)
+            self._features_file, self._labels_file, input_fields,
+            maximum_features_length, maximum_labels_length, in_memory)
 
     def _make_feeding_data(self,
                            features_file,

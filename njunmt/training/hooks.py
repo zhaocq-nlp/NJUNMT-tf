@@ -152,6 +152,19 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
                 pretrain_model_dir=self._pretrain_model,
                 problem_name=self._problem_name)
 
+    def after_create_session(self, session, coord):
+        checkpoint_path = saver_lib.latest_checkpoint(self._checkpoint_dir)
+        if checkpoint_path:
+            # reloading model
+            self._saver.restore(session, checkpoint_path)
+            gs = session.run(self._global_step)
+            tf.logging.info(
+                "CheckpointSaverHook (after_create_session): reloading models and reset global_step={}".format(gs))
+            StepTimer.reset_init_triggered_step(gs)
+        elif self._reload_var_ops:
+            tf.logging.info("Assign all variables with pretrained variables.")
+            session.run(self._reload_var_ops)
+
     def before_run(self, run_context):
         """ Dumps graphs and loads checkpoint if there exits.
 
@@ -180,18 +193,6 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
                 self._summary_writer.add_graph(graph)
                 self._summary_writer.add_meta_graph(meta_graph_def)
             tf.logging.info("CheckpointSaverHook (before_run): dump graph...")
-        checkpoint_path = saver_lib.latest_checkpoint(self._checkpoint_dir)
-        if self._first_call:
-            if checkpoint_path:
-                # reloading model
-                self._saver.restore(run_context.session, checkpoint_path)
-                gs = run_context.session.run(self._global_step)
-                tf.logging.info(
-                    "CheckpointSaverHook (before_run): reloading models and reset global_step={}".format(gs))
-                StepTimer.reset_init_triggered_step(gs)
-            elif self._reload_var_ops:
-                tf.logging.info("Assign all variables with pretrained variables.")
-                run_context.session.run(self._reload_var_ops)
         self._first_call = False
         self._timer.register_before_run()
         return tf.train.SessionRunArgs(self._global_step)

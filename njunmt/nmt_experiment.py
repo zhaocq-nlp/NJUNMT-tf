@@ -105,6 +105,7 @@ class TrainingExperiment(Experiment):
             "save_checkpoint_steps": 1000,
             "train_steps": 10000000,
             "eval_steps": 100,
+            "update_cycle": 1,  # for pseudo multi-gpu
             "pretrain_model": None,
             "reverse_target": False,
             "maximum_features_length": None,
@@ -139,7 +140,7 @@ class TrainingExperiment(Experiment):
                                   mode=ModeKeys.TRAIN,
                                   dataset=dataset,
                                   name=self._model_configs["problem_name"])
-        train_op = estimator_spec.train_op
+        train_ops = estimator_spec.train_ops
         hooks = estimator_spec.training_hooks
         # build training session
         sess = tf.train.MonitoredSession(
@@ -162,17 +163,30 @@ class TrainingExperiment(Experiment):
             input_fields=estimator_spec.input_fields,
             maximum_features_length=self._model_configs["train"]["maximum_features_length"],
             maximum_labels_length=self._model_configs["train"]["maximum_labels_length"])
-        eidx = 0
-        while True:
-            if sess.should_stop():
-                break
-            tf.logging.info("STARTUP Epoch {}".format(eidx))
 
-            for data in train_data:
-                if sess.should_stop():
-                    break
-                sess.run(train_op, feed_dict=data["feed_dict"])
-            eidx += 1
+        eidx = [0, 0]
+        update_cycle = [self._model_configs["train"]["update_cycle"], 1]
+
+        def step_fn(step_context):
+            step_context.session.run(train_ops["zeros_op"])
+            try:
+                while update_cycle[0] != update_cycle[1]:
+                    data = train_data.next()
+                    step_context.session.run(
+                        train_ops["collect_op"], feed_dict=data["feed_dict"])
+                    update_cycle[1] += 1
+                data = train_data.next()
+                update_cycle[1] = 1
+                return step_context.run_with_hooks(
+                    train_ops["train_op"], feed_dict=data["feed_dict"])
+            except StopIteration:
+                eidx[1] += 1
+
+        while not sess.should_stop():
+            if eidx[0] != eidx[1]:
+                tf.logging.info("STARTUP Epoch {}".format(eidx[1]))
+                eidx[0] = eidx[1]
+            sess.run_step_fn(step_fn)
 
 
 class InferExperiment(Experiment):
@@ -373,14 +387,13 @@ class EvalExperiment(Experiment):
                                   name=self._model_configs["problem_name"])
 
         sess = self._build_default_session()
-        do_bucketing = (sum([p["output_attention"]
-                             for p in self._model_configs["eval_data"]]) == 0)
         text_inputter = ParallelTextInputter(
             dataset=dataset,
             features_field_name="eval_features_file",
             labels_field_name="eval_labels_file",
             batch_size=self._model_configs["eval"]["batch_size"],
-            bucketing=do_bucketing)
+            bucketing=(sum([p["output_attention"]
+                            for p in self._model_configs["eval_data"]]) == 0))
         # reload
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
         if checkpoint_path:

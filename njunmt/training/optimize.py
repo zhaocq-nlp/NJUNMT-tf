@@ -26,6 +26,63 @@ from njunmt.utils.constants import ModeKeys
 from njunmt.utils.constants import Constants
 
 
+def _zero_variables(variables, name=None):
+    """ Reset the variables.
+
+    Args:
+        variables: A list of variables.
+        name: Op name.
+
+    Returns: A tf op.
+    """
+    ops = []
+    for var in variables:
+        with tf.device(var.device):
+            op = var.assign(tf.zeros(var.shape.as_list()))
+        ops.append(op)
+
+    return tf.group(*ops, name=name or "zero_variables")
+
+
+def _replicate_variables(variables, device=None):
+    """ Replicates variables.
+
+    Args:
+        variables: A list of variables to be replicate.
+        device: The device.
+
+    Returns: A list of new variables.
+    """
+    new_vars = []
+    for var in variables:
+        device = device or var.device
+        with tf.device(device):
+            name = var.name.split(":")[0].rstrip("/") + "/replica_collect"
+            new_vars.append(tf.get_variable(
+                name=name, trainable=False,
+                initializer=tf.zeros_initializer,
+                shape=var.shape.as_list()))
+    return new_vars
+
+
+def _collect_gradients(gradients, variables):
+    """ Collects gradients.
+
+    Args:
+        gradients: A list of gradients.
+        variables: A list of variables for collecting the gradients.
+
+    Returns: A tf op.
+    """
+    ops = []
+    for grad, var in zip(gradients, variables):
+        if isinstance(grad, tf.Tensor):
+            ops.append(tf.assign_add(var, grad))
+        else:
+            ops.append(tf.scatter_add(var, grad.indices, grad.values))
+    return tf.group(*ops, name="collect_gradients")
+
+
 def _get_optimizer(name, **params):
     """ Create optimizer.
 
@@ -156,16 +213,18 @@ class OptimizerWrapper(Configurable):
 
     def optimize(self,
                  loss,
-                 grads_and_vars=None):
+                 grads_and_vars,
+                 update_cycle=1):
         """ Creates the optimizer with learning rate decaying, optimizes
         loss and return a train_op.
 
         Args:
             loss: A list of loss Tensors.
             variables: A list of variables to optimize or None to use all trainable variables.
-            grads_and_vars: A list of (gradients, variables) to be averaged.
+            grads_and_vars: A list of (gradients, variables) (...to be averaged).
+            update_cycle: An integer, for pseudo multi-GPU.
 
-        Returns: The train_op.
+        Returns: A dict of operations for training.
         """
         assert len(loss) == len(grads_and_vars)
 
@@ -177,20 +236,48 @@ class OptimizerWrapper(Configurable):
             return list(zip(clipped_gradients, variables))
 
         # average gradients
-        # [[(var0, grad0_0), (var1, grad1_0), ...], [(var0, grad0_1, var1, grad1_1), ...], ...]
+        # [[(grad0_0, var0), (grad1_0, var1), ...], [(grad0_1, var0), (grad1_1, var1), ...], ...]
         with tf.variable_scope("OptimizeLoss"):
+            # average gradients
             if len(loss) == 1:
                 loss = loss[0]
                 grads_and_vars = grads_and_vars[0]
             else:
+                loss = tf.reduce_mean(loss)
                 grads_and_vars = average_gradients(grads_and_vars)
+            gradients, variables = zip(*grads_and_vars)
+            # update cycle
+            if update_cycle == 1:
+                zero_variables_op = tf.no_op("zero_variables")
+                collect_op = tf.no_op("collect_op")
+            else:
+                loss_var = tf.get_variable(name="replica_loss",
+                                           shape=[],
+                                           dtype=tf.float32,
+                                           initializer=tf.zeros_initializer,
+                                           trainable=False)
+                slot_variables = _replicate_variables(variables)
+                zero_variables_op = _zero_variables(slot_variables + [loss_var])
+                collect_grads_op = _collect_gradients(gradients, slot_variables)
+                collect_loss_op = tf.assign_add(loss_var, loss)
+                collect_op = tf.group(collect_loss_op, collect_grads_op, name="collect_op")
+                scale = 1.0 / float(update_cycle)
+                gradients = [scale * (g + s) for (g, s) in zip(gradients, slot_variables)]
+                loss = scale * (loss + loss_var)
+            # clip gradients
             if self.params["optimizer.clip_gradients"] > 0:
-                grads_and_vars = _clip_gradients(grads_and_vars)
+                gradients, _ = tf.clip_by_global_norm(
+                    gradients, self.params["optimizer.clip_gradients"])
+                # grads_and_vars = _clip_gradients(grads_and_vars)
+            grads_and_vars = list(zip(gradients, variables))
             # Create gradient updates.
             grad_updates = self._optimizer.apply_gradients(
                 grads_and_vars,
                 global_step=tf.train.get_global_step(),
                 name="train")
-        return grad_updates
-
-
+        train_ops = {
+            "zeros_op": zero_variables_op,
+            "collect_op": collect_op,
+            "train_op": grad_updates
+        }
+        return loss, train_ops

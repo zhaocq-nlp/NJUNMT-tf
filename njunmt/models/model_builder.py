@@ -37,7 +37,7 @@ from njunmt.utils.expert_utils import repeat_n_times
 
 class EstimatorSpec(
     namedtuple('EstimatorSpec', ['input_fields',
-                                 'predictions', 'loss', 'train_op',
+                                 'predictions', 'loss', 'train_ops',
                                  'training_chief_hooks', 'training_hooks'])):
     """ Defines a collection of operations and objects
     returned by `model_fn`.
@@ -50,7 +50,7 @@ class EstimatorSpec(
                 input_fields=None,
                 predictions=None,
                 loss=None,
-                train_op=None,
+                train_ops=None,
                 training_chief_hooks=None,
                 training_hooks=None):
         """ Creates a validated `EstimatorSpec` instance.
@@ -66,7 +66,7 @@ class EstimatorSpec(
               inference.
             predictions: A dict of Tensor for inference.
             loss: Training loss Tensor. Must be either scalar, or with shape `[1]`.
-            train_op: Op for the training step.
+            train_ops: Op for the training step.
             training_chief_hooks: Iterable of `tf.train.SessionRunHook` objects to
               run on the chief worker during training.
             training_hooks: Iterable of `tf.train.SessionRunHook` objects that to run
@@ -86,7 +86,7 @@ class EstimatorSpec(
             if mode in (ModeKeys.TRAIN,
                         ModeKeys.EVAL):
                 raise ValueError("Missing loss.")
-        if train_op is None and mode == ModeKeys.TRAIN:
+        if train_ops is None and mode == ModeKeys.TRAIN:
             raise ValueError("Missing train_op.")
 
         training_chief_hooks = tuple(training_chief_hooks or [])
@@ -101,7 +101,7 @@ class EstimatorSpec(
             input_fields=input_fields,
             predictions=predictions,
             loss=loss,
-            train_op=train_op,
+            train_ops=train_ops,
             training_chief_hooks=training_chief_hooks,
             training_hooks=training_hooks)
 
@@ -197,8 +197,7 @@ def model_fn(
                 _loss,
                 var_list=tf.trainable_variables(),
                 colocate_gradients_with_ops=True)
-            return _input_fields, _model_output[0], _model_output[1], \
-                   _loss, grads
+            return _input_fields, _loss, grads
 
     model_returns = parallelism(_build_model)
     input_fields = model_returns[0]
@@ -219,16 +218,12 @@ def model_fn(
             predictions=attention)
 
     assert mode == ModeKeys.TRAIN
-    loss_sums = model_returns[1]
-    weight_sums = model_returns[2]
-    loss_per_gpu = model_returns[3]
-    grads = model_returns[4]
-    loss = tf.reduce_sum(loss_sums) / tf.reduce_sum(weight_sums)
-    tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, Constants.TRAIN_LOSS_KEY_NAME)
-    tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, loss)
+    loss_per_dp, grads = model_returns[1:]
     _add_to_display_collection(input_fields)
     # build train op
-    train_op = opt.optimize(loss_per_gpu, grads_and_vars=grads)
+    train_loss, train_ops = opt.optimize(loss_per_dp, grads, update_cycle=model_configs["train"]["update_cycle"])
+    tf.add_to_collection(Constants.DISPLAY_KEY_COLLECTION_NAME, Constants.TRAIN_LOSS_KEY_NAME)
+    tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, train_loss)
     # build training hooks
     hooks = build_hooks(model_configs, distributed_mode=distributed_mode, is_chief=is_chief)
     from njunmt.training.text_metrics_spec import build_eval_metrics
@@ -237,8 +232,8 @@ def model_fn(
     return EstimatorSpec(
         mode,
         input_fields=input_fields,
-        loss=loss,
-        train_op=train_op,
+        loss=train_loss,
+        train_ops=train_ops,
         training_hooks=hooks,
         training_chief_hooks=None)
 
