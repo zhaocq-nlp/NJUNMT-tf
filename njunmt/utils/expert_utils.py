@@ -28,11 +28,19 @@ from njunmt.utils.misc import get_available_devices
 
 class StepTimer(object):
     """Timer that triggers at most once every N steps. """
-    __instances = list()
     __program_start_time = time.time()  # overall starting time
-    # these two parameters are for DisplayHook
-    __last_triggered_start_time = None
-    __accumulate_running_time = 0.
+    __instances = []
+
+    @staticmethod
+    def reset_init_triggered_step(step):
+        """ Resets the last triggered step.
+
+        Args:
+            step: A python integer, the training step.
+        """
+        StepTimer.__init_triggered_step = step
+        for ins in StepTimer.__instances:
+            ins.update_last_triggered_step(step)
 
     def __init__(self, every_steps, start_at=0):
         """ Initializes the object.
@@ -43,12 +51,7 @@ class StepTimer(object):
         """
         self._every_steps = every_steps
         self._last_triggered_step = start_at
-
         StepTimer.__instances.append(self)
-
-    def register_before_run(self):
-        """ Registers before session.run(). """
-        StepTimer.__last_triggered_start_time = time.time()
 
     def should_trigger_for_step(self, step):
         """Return true if the timer should trigger for the specified step.
@@ -62,10 +65,6 @@ class StepTimer(object):
           step and the last triggered step exceeds `every_steps`.
           False otherwise.
         """
-        if StepTimer.__last_triggered_start_time is not None:
-            StepTimer.__accumulate_running_time += time.time() - StepTimer.__last_triggered_start_time
-            StepTimer.__last_triggered_start_time = None
-
         if self._last_triggered_step == step:
             return False
 
@@ -73,17 +72,6 @@ class StepTimer(object):
             if step >= self._last_triggered_step + self._every_steps:
                 return True
         return False
-
-    @staticmethod
-    def reset_init_triggered_step(step):
-        """ Resets the last triggered step.
-
-        Args:
-            step: A python integer, the training step.
-        """
-        StepTimer.__init_triggered_step = step
-        for ins in StepTimer.__instances:
-            ins.update_last_triggered_step(step)
 
     def update_last_triggered_step(self, step):
         """Update the last triggered time and step number.
@@ -112,12 +100,19 @@ class StepTimer(object):
         """ Returns the last triggered step. """
         return self._last_triggered_step
 
-    def get_session_run_time(self):
-        """ Returns session running time:
-        (total elapsed time - time to apply hooks)"""
-        ret = StepTimer.__accumulate_running_time
-        StepTimer.__accumulate_running_time = 0.
-        return ret
+
+class LoggingTimer(object):
+    """ Timer for displaying trainging time. """
+
+    def __init__(self):
+        """ Initializes the object. """
+        self._last_triggered_time = time.time()
+
+    def update_last_triggered_time(self):
+        """Update the last triggered time. """
+        returned_time = time.time() - self._last_triggered_time
+        self._last_triggered_time = time.time()
+        return returned_time
 
 
 class PadRemover(object):

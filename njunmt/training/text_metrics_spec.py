@@ -118,7 +118,6 @@ class TextMetricSpec(tf.train.SessionRunHook):
 
         Returns: A `SessionRunArgs` object containing global_step.
         """
-        self._timer.register_before_run()
         return tf.train.SessionRunArgs(self._global_step)
 
     def after_run(self, run_context, run_values):

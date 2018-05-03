@@ -28,7 +28,7 @@ from njunmt.utils.constants import Constants
 from njunmt.utils.misc import dump_model_analysis
 from njunmt.utils.misc import load_pretrain_model
 from njunmt.utils.misc import get_saver_or_default
-from njunmt.utils.expert_utils import StepTimer
+from njunmt.utils.expert_utils import StepTimer, LoggingTimer
 from njunmt.utils.summary_writer import SummaryWriter
 
 
@@ -194,7 +194,6 @@ class CheckpointSaverHook(tf.train.SessionRunHook):
                 self._summary_writer.add_meta_graph(meta_graph_def)
             tf.logging.info("CheckpointSaverHook (before_run): dump graph...")
         self._first_call = False
-        self._timer.register_before_run()
         return tf.train.SessionRunArgs(self._global_step)
 
     def after_run(self, run_context, run_values):
@@ -262,13 +261,18 @@ class DisplayHook(tf.train.SessionRunHook):
         self._display_args["global_step"] = global_step
         # timer & summary writer
         self._timer = None
+        self._logging_timer = None
         self._summary_writer = None
 
     def begin(self):
         """ Creates StepTimer and SummaryWriter. """
         self._timer = StepTimer(every_steps=self._display_steps)
+        self._logging_timer = LoggingTimer()
         if self._do_summary:
             self._summary_writer = SummaryWriter(self._checkpoint_dir)
+
+    def after_create_session(self, session, coord):
+        self._logging_timer.update_last_triggered_time()
 
     def before_run(self, run_context):
         """ Dumps graphs and loads checkpoint if there exits.
@@ -281,7 +285,6 @@ class DisplayHook(tf.train.SessionRunHook):
         Returns: A `SessionRunArgs` object containing global_step and
           arguments to be displayed.
         """
-        self._timer.register_before_run()
         return tf.train.SessionRunArgs(self._display_args)
 
     def after_run(self, run_context, run_values):
@@ -295,10 +298,9 @@ class DisplayHook(tf.train.SessionRunHook):
         """
         global_step = run_values.results.pop("global_step")
         if self._timer.should_trigger_for_step(global_step):
-
             training_loss = run_values.results[Constants.TRAIN_LOSS_KEY_NAME]
             elapsed_steps, _ = self._timer.update_last_triggered_step(global_step)
-            session_run_time = self._timer.get_session_run_time()
+            session_run_time = self._logging_timer.update_last_triggered_time()
             steps_per_sec = elapsed_steps * 1. / session_run_time
             secs_per_step = session_run_time * 1. / elapsed_steps
 
@@ -309,6 +311,7 @@ class DisplayHook(tf.train.SessionRunHook):
                 self._summary_writer.add_summary("global_step/secs_per_step", secs_per_step, global_step)
                 for k, v in run_values.results.items():
                     self._summary_writer.add_summary(k, v, global_step)
+            self._logging_timer.update_last_triggered_time()
         # hit maximum training steps
         if self._maximum_train_steps and global_step >= self._maximum_train_steps:
             tf.logging.info("Training maximum steps. maximum_train_step={}".format(self._maximum_train_steps))
