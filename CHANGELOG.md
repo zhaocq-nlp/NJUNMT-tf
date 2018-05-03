@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Load pretrained model.
 - Layer normalization for fflayer and LayerNormLSTMCell
 - Multi-GPU inference and evaluation (something wrong with training)
+- Pseudo Multi-GPU training with `update_cycle` option
 
 ### Changed
 - Default loss function.
@@ -16,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Replace multi-bleu.perl with an equivalent python version.
 - Replace model_analysis APIs with tf.profiler.
 - Move `input_fields` from class Dataset to class SequenceToSequence.
+- Tensorflow 1.5 at least
 
 ### Removed
 - Configuration: ``multi_bleu_script`` and ``tokenize_scropt``.
