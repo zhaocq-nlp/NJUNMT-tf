@@ -390,8 +390,8 @@ def norm_layer(x, gain=1.0, shift=0.0, name="ln", reuse=None, epsilon=1.e-6):
             "gamma", shape=[filters], initializer=tf.constant_initializer(gain))
         beta = tf.get_variable(
             "beta", shape=[filters], initializer=tf.constant_initializer(shift))
-        mean = tf.reduce_mean(x, axis=[-1], keep_dims=True)
-        variance = tf.reduce_mean(tf.square(x - mean), axis=[-1], keep_dims=True)
+        mean = tf.reduce_mean(x, axis=[-1], keepdims=True)
+        variance = tf.reduce_mean(tf.square(x - mean), axis=[-1], keepdims=True)
         norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
         normalized = norm_x * gamma + beta
         return normalized
