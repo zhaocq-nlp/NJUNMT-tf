@@ -152,12 +152,8 @@ class TransformerDecoder(Decoder):
             assert hasattr(helper, "label_ids"), (
                 "helper ({}) for TransformerDecoder when mode=TRAIN/EVAL "
                 "should provide attr \"label_ids\"".format(type(helper)))
-            assert hasattr(helper, "label_length"), (
-                "helper ({}) for TransformerDecoder when mode=TRAIN/EVAL "
-                "should provide attr \"label_length\"".format(type(helper)))
             # prepare decoder input
             label_ids = getattr(helper, "label_ids")  # [batch_size, max_len_trg]
-            label_length = getattr(helper, "label_length")  # [batch_size, ]
             batch_size = tf.shape(label_ids)[0]
             # shift
             target_sos_ids = tf.tile([helper.vocab.sos_id], [batch_size])
