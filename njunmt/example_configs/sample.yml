@@ -10,6 +10,8 @@ model_dir: models
 
 # training options
 train:
+  # for pseudo Multi-GPU training, each step goes through `update_cycle` * batch_(tokens_)size samples
+  update_cycle: 1
   # batch size, the number of sentences passed into one step, by default: 80
   batch_size: 80
   # the number of words for each batch, by default: None

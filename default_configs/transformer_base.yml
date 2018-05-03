@@ -8,14 +8,14 @@ metrics:
 
   - class: BleuMetricSpec
     params:
-      start_at: 30000
+      start_at: 5000
       eval_steps: 1000
       batch_size: 32
       beam_size: 4
       length_penalty: -1.0
       delimiter: " "
       char_level: false
-      maximum_keep_models: 10
+      maximum_keep_models: 8
       early_stop: true
 
 # basic transformer parameters
@@ -60,7 +60,7 @@ model_params:
       dropout_attention_keep_prob: *pdrop
 
 optimizer_params:
-  optimizer.name: LazyAdam
+  optimizer.name: Adam
   optimizer.params:
     epsilon: 1.0e-9
     beta1: 0.9
@@ -71,7 +71,7 @@ optimizer_params:
 
   optimizer.lr_decay:
     decay_type: noam_decay
-    scale: 2.0
+    scale: 1.0
     dmodel: *dmodel
     decay_steps: 16000
     decay_rate: 0.99

@@ -3,7 +3,8 @@
 export CUDA_VISIBLE_DEVICES=
 
 MODEL_DIR=./models
-BATCH_TOKENS_SIZE=2048
+BATCH_TOKENS_SIZE=2500
+UPDATE_CYCLE=10
 MAXIMUM_FEATURES_LENGTH=50
 MAXIMUM_LABELS_LENGTH=50
 SAVE_CHECKPOINT_STEPS=1000
@@ -26,6 +27,7 @@ python -m bin.train \
         ./default_configs/transformer_base.yml" \
   --train "
         batch_size: 32
+        update_cycle: ${UPDATE_CYCLE}
         batch_tokens_size: ${BATCH_TOKENS_SIZE}
         save_checkpoint_steps: ${SAVE_CHECKPOINT_STEPS}
         train_steps:
