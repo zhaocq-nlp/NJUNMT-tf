@@ -175,7 +175,7 @@ class OptimizerWrapper(Configurable):
                 "staircase": False,
                 "patience": None,  # for loss_decay
                 "dmodel": None,  # for noam_decay
-                "scale": 2.0  # for noam_decay
+                "scale": 1.0  # for noam_decay
             },
             "optimizer.clip_gradients": 1.0,
             "optimizer.sync_replicas": 0,
