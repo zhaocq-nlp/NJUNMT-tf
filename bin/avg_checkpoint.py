@@ -100,6 +100,8 @@ def main(_):
 
     os.system("cp {} {}".format(model_config_yml_path, FLAGS.output_path))
     tf.logging.info("Averaged checkpoints saved in %s", FLAGS.output_path)
+    with open(os.path.join(FLAGS.output_path, "avg_ckpt_list"), "w") as fw:
+        fw.write("\n".join(checkpoints))
 
 
 if __name__ == "__main__":
