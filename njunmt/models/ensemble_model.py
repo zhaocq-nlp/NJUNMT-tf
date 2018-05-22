@@ -219,7 +219,7 @@ class EnsembleModel(object):
             model._encoder.name = os.path.join(model.name, model._encoder.name)
             model._input_modality.name = os.path.join(model.name, model._input_modality.name)
             model._target_modality.name = os.path.join(model.name, model._target_modality.name)
-            model._encoder_decoder_bridge.name = os.path.join(model.name, model._encoder_decoder_bridge.name)
+            # model._encoder_decoder_bridge.name = os.path.join(model.name, model._encoder_decoder_bridge.name)
 
     def get_ensemble_weights(self, num_models):
         """ Creates ensemble weights from `weight_scheme`.
