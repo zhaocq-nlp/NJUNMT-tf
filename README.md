@@ -129,40 +129,89 @@ The available FLAGS (or the top levels of yaml configs) for bin.infer are as fol
 
 ## Benchmarks
 
-The benchmark is performed on 1 GTX 1080Ti GPU with predefined configurations:
+The RNN benchmarks are performed on 1 GTX 1080Ti GPU with predefined configurations:
 
 - `default_configs/adam_loss_decay.yml`
 - `default_configs/default_metrics.yml`
 - `default_configs/default_training_options.yml`
 - `default_configs/seq2seq_cgru.yml`
 
-The datasets are preprocessed using [fetch_wmt2017_ende.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2017_ende.sh) referring to [Edinburgh’s Report](http://statmt.org/wmt17/pdf/WMT39.pdf).
+The Transformer benchmarks are performed on 1 GTX 1080Ti GPU with predefined configurations:
+
+- `default_configs/transformer_base.yml`
+- `default_configs/transformer_training_options.yml`
+
+Note that in Transformer model, we set `batch_tokens_size=2500` with `update_cycle=10` to realize pseudo parallel training.
+
+
+
+The datasets are preprocessed using [fetch_wmt2017_ende.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2017_ende.sh) and [fetch_wmt2018_zhen.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2018_zhen.sh) referring to [Edinburgh’s Report](http://statmt.org/wmt17/pdf/WMT39.pdf). The BLEU scores are evaluated by the wrapper script [run_mteval.sh](https://github.com/zhaocq-nlp/NJUNMT-tf/blob/master/njunmt/tools/mteval/run_mteval.sh).
 
 <table>
   <tr>
     <th rowspan="2">Dataset</th>
-    <th colspan="2">multi-bleu (tok) </th>
-    <th colspan="2">mteval (detok) </th>
+    <th rowspan="2"> Model</th>
+    <th colspan="2"> BLEU </th>
   </tr>
   <tr>
     <td>newstest2016(dev)</td>
     <td>newstest2017</td>
-    <td>newstest2016(dev)</td>
+  </tr>
+  <tr>
+    <td rowspan="2">WMT17 EN-DE</td>
+    <td>RNN</td>
+    <td>29.6</td>
+    <td>23.6</td>
+  </tr>
+  <tr>
+    <td>Transformer</td>
+    <td>33.5</td>
+    <td>27.0</td>
+  </tr>
+  <tr>
+    <td rowspan="2">WMT17 DE-EN</td>
+    <td>RNN</td>
+    <td>34.0</td>
+    <td>29.6</td>
+  </tr>
+  <tr>
+    <td>Transformer</td>
+    <td>37.6</td>
+    <td>33.1</td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <th rowspan="2">Dataset</th>
+    <th rowspan="2"> Model</th>
+    <th colspan="2"> BLEU </th>
+  </tr>
+  <tr>
+    <td>newsdev2017(dev)</td>
     <td>newstest2017</td>
   </tr>
   <tr>
-    <td>WMT17 EN-DE</td>
-    <td>29.73</td>
-    <td>23.89</td>
-    <td>29.60</td>
-    <td>23.64</td>
+    <td rowspan="2">WMT17 ZH-EN</td>
+    <td>RNN</td>
+    <td>19.7</td>
+    <td>21.2</td>
   </tr>
   <tr>
-    <td>WMT17 DE-EN</td>
-    <td>33.69</td>
-    <td>29.26</td>
-    <td>33.99</td>
-    <td>29.56</td>
+    <td>Transformer</td>
+    <td>22.7</td>
+    <td>25.0</td>
+  </tr>
+  <tr>
+    <td rowspan="2">WMT17 EN-ZH</td>
+    <td>RNN</td>
+    <td>30.0</td>
+    <td>30.2</td>
+  </tr>
+  <tr>
+    <td>Transformer</td>
+    <td>34.9</td>
+    <td>35.0</td>
   </tr>
 </table>
 
@@ -174,8 +223,6 @@ The following features remain unimplemented:
 - schedule sampling
 - minimum risk training
 
-and trustable results on open datasets (WMT) are supposed to be reported.
-
 
 ## Acknowledgments
 
@@ -185,6 +232,7 @@ The implementation is inspired by the following:
 - [OpenNMT-tf](https://github.com/OpenNMT/OpenNMT-tf)
 - [Google's seq2seq](https://github.com/google/seq2seq) </br>
 *[Massive Exploration of Neural Machine Translation Architectures](https://arxiv.org/abs/1703.03906)*
+- [THUMT](https://github.com/thumt/THUMT)
 - [Google's tensor2tensor](https://github.com/tensorflow/tensor2tensor) </br>
 *[Attention is All You Need](https://arxiv.org/abs/1706.03762)*
 - *[Stronger Baselines for Trustable Results in Neural Machine Translation](http://www.aclweb.org/anthology/W17-3203.pdf)*

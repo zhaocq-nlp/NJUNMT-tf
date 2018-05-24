@@ -1,0 +1,15 @@
+# training options for baseline
+
+model_dir: models
+
+train:
+  batch_size: 32
+  batch_tokens_size: 2500
+  update_cycle: 10
+  save_checkpoint_steps: 1000
+  train_steps: 300000
+  eval_steps: 100
+  maximum_features_length: 50
+  maximum_labels_length: 50
+  shuffle_every_epoch:
+
