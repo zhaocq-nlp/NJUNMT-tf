@@ -144,8 +144,12 @@ The Transformer benchmarks are performed on 1 GTX 1080Ti GPU with predefined con
 Note that in Transformer model, we set `batch_tokens_size=2500` with `update_cycle=10` to realize pseudo parallel training.
 
 
+The beam sizes for RNN and Transformer are 10 and 4 separately.
 
-The datasets are preprocessed using [fetch_wmt2017_ende.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2017_ende.sh) and [fetch_wmt2018_zhen.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2018_zhen.sh) referring to [Edinburgh’s Report](http://statmt.org/wmt17/pdf/WMT39.pdf). The BLEU scores are evaluated by the wrapper script [run_mteval.sh](https://github.com/zhaocq-nlp/NJUNMT-tf/blob/master/njunmt/tools/mteval/run_mteval.sh).
+The datasets are preprocessed using [fetch_wmt2017_ende.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2017_ende.sh) and [fetch_wmt2018_zhen.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2018_zhen.sh) referring to [Edinburgh’s Report](http://statmt.org/wmt17/pdf/WMT39.pdf).
+
+
+The BLEU scores are evaluated by the wrapper script [run_mteval.sh](https://github.com/zhaocq-nlp/NJUNMT-tf/blob/master/njunmt/tools/mteval/run_mteval.sh). For EN-ZH experiments, the BLEU scores are evaluated at character-level while others are evaluated at word-level.
 
 <table>
   <tr>
