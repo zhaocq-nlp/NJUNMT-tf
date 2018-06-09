@@ -203,15 +203,16 @@ def process_beam_predictions(decoding_result, beam_size, alpha):
         penalty = compute_length_penalty(length, alpha)
     scores = log_probs * penalty
     # [_batch * _beam, ] => [_batch, _beam]
-    scores_flat = tf.reshape(scores, [-1, beam_size])
+    scores_shaped = tf.reshape(scores, [-1, beam_size])
     # [_batch, _beam]
-    top_scores, top_indices = tf.nn.top_k(scores_flat, k=beam_size)
+    top_scores, top_indices = tf.nn.top_k(scores_shaped, k=beam_size)
     batch_beam_pos = compute_batch_indices(tf.shape(top_indices)[0], k=beam_size) * beam_size
     # [_batch * _beam, ]
     top_indices = tf.reshape(top_indices + batch_beam_pos, [-1])
     # [_batch * _beam, timesteps]
     sorted_hypothesis = tf.gather(hypothesis, top_indices)
     decoding_result["sorted_hypothesis"] = sorted_hypothesis
-    decoding_result["scores"] = scores_flat
     decoding_result["sorted_argidx"] = top_indices
+    decoding_result["sorted_scores"] = top_scores
+    decoding_result["scores"] = scores_shaped
     return decoding_result

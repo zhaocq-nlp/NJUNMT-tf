@@ -135,7 +135,7 @@ def _infer(
     Args:
         sess: `tf.Session`
         feed_dict: A dictionary of feeding data.
-        prediction_op: Tensorflow operation for inference.
+        prediction_op: A list of Tensorflow operation for inference.
         batch_size: The batch size.
         top_k: An integer, number of predicted sequences will be
           returned.
@@ -180,6 +180,7 @@ def _infer(
                 attention_dict=kwargs["attentions"],
                 gather_idx=kwargs["sorted_argidx"][batch_beam_pos])
             return pred[batch_beam_pos, :].tolist(), atts
+        # [_batch * _beam, timesteps] => [_batch * top_k, timesteps]
         return pred[batch_beam_pos, :].tolist(), []
 
     hypothesises, attentions = repeat_n_times(
