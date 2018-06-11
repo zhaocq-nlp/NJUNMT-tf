@@ -17,38 +17,38 @@ import os
 import tensorflow as tf
 from tensorflow import gfile
 from njunmt.nmt_experiment import TrainingExperiment
-from njunmt.utils.configurable import maybe_load_yaml, DEFAULT_TRAIN_CONFIGS
-from njunmt.utils.configurable import update_train_model_configs
+from njunmt.utils.configurable import update_configs_from_flags
 from njunmt.utils.configurable import load_from_config_path
+from njunmt.utils.configurable import define_tf_flags
 
-tf.flags.DEFINE_string("config_paths", "",
-                       """Path to a yaml configuration files defining FLAG
-                       values. Multiple files can be separated by commas.
-                       Files are merged recursively. Setting a key in these
-                       files is equivalent to setting the FLAG value with
-                       the same name.""")
+# define arguments for train.py
+# format: {arg_name: [type, default_val, helper]}
+TRAIN_ARGS = {
+    "config_paths": ["string", "", """Path to a yaml configuration files defining FLAG values.
+                                   Multiple files can be separated by commas. Files are merged recursively.
+                                   Setting a key in these files is equivalent to
+                                   setting the FLAG value with the same name."""],
+    "model_dir": ["string", "models", """The path to save models. """],
+    "problem_name": ["string", "seq2seq", """The name for this run."""],
+    "train": ["string", "", """A yaml-style string defining the training options."""],
+    "data": ["string", "", """A yaml-style string defining the training data files,
+                            evaluation data files, vocabulary files and bpe codes."""],
+    "hooks": ["string", "", """A yaml-style string defining the training hooks (if implemented). """],
+    "metrics": ["string", "", """A yaml-style string defining the evaluation metrics for training steps (if implemented),
+                                e.g. BLEU, crossentropy loss."""],
+    "model": ["string", "", """SequenceToSequence", "The model class name."""],
+    "model_params": ["string", "", """A yaml-style string defining the model parameters."""],
+    "optimizer_params": ["string", "", """A yaml-style string defining the parameters for optimizer."""]
+}
 
-tf.flags.DEFINE_string("model_dir", "", """model directory""")
-tf.flags.DEFINE_string("problem_name", None, """problem name""")
-tf.flags.DEFINE_string("train", "", """training options""")
-tf.flags.DEFINE_string("data", "", """training and evaluation data files, vocabulary files, bpe codes""")
-tf.flags.DEFINE_string("hooks", "", """training hooks""")
-tf.flags.DEFINE_string("metrics", "", """evaluation metrics""")
-tf.flags.DEFINE_string("model", "", """model class name""")
-tf.flags.DEFINE_string("model_params", "", """model parameters""")
-tf.flags.DEFINE_string("optimizer_params", "", """optimizer parameters""")
-
-tf.flags.DEFINE_integer("task_index", -1, """task index for multi-GPU""")  # task index for multi-gpu
-
-FLAGS = tf.flags.FLAGS
+FLAGS = define_tf_flags(TRAIN_ARGS)
 
 
 def main(_argv):
-    model_configs = maybe_load_yaml(DEFAULT_TRAIN_CONFIGS)
     # load flags from config file
-    model_configs = load_from_config_path(FLAGS.config_paths, model_configs)
+    model_configs = load_from_config_path(FLAGS.config_paths)
     # replace parameters in configs_file with tf FLAGS
-    model_configs = update_train_model_configs(model_configs, FLAGS)
+    model_configs = update_configs_from_flags(model_configs, FLAGS, TRAIN_ARGS.keys())
     model_dir = model_configs["model_dir"]
     if not gfile.Exists(model_dir):
         gfile.MakeDirs(model_dir)

@@ -98,31 +98,31 @@ def _params_to_stringlist(params, prefix="   "):
     return param_list
 
 
-DEFAULT_TRAIN_CONFIGS = """
-model_dir: models
-problem_name:
-train: {}
-data: {}
-hooks: {}
-metrics: {}
-model:
-model_params: {}
-optimizer_params: {}
-"""
-
-
-def update_train_model_configs(model_configs, tf_flags):
-    """ Updates model configurations with tf FLAGS, for training
-    setting.
+def define_tf_flags(args):
+    """ Defines tf FLAGS.
 
     Args:
-        model_configs: A dictionary of all model configurations.
-        tf_flags: tf FLAGS.
+        args: A dict, with format: {arg_name: [type, default_val, helper]}
 
-    Returns: The updated dictionary.
+    Returns: tf FLAGS.
+    """
+    for key, val in args.items():
+        eval("tf.flags.DEFINE_{}".format(val[0]))(key, val[1], val[2])
+    return tf.flags.FLAGS
+
+
+def update_configs_from_flags(model_configs, tf_flags, flag_keys):
+    """ Replaces `model_configs` with options defined in `tf_flags`.
+
+    Args:
+        model_configs: A dict.
+        tf_flags: tf FLAGS.
+        flag_keys: A set of keys.
+
+    Returns: The updated dict.
     """
 
-    def update(mc, param_name):
+    def _update(mc, param_name):
         param_str = getattr(tf_flags, param_name)
         if param_str is None:
             return mc
@@ -131,99 +131,24 @@ def update_train_model_configs(model_configs, tf_flags):
             return mc
         return deep_merge_dict(model_configs, {param_name: params})
 
-    model_configs = update(model_configs, "problem_name")
-    model_configs = update(model_configs, "model_dir")
-    model_configs = update(model_configs, "train")
-    model_configs = update(model_configs, "data")
-    model_configs = update(model_configs, "hooks")
-    model_configs = update(model_configs, "metrics")
-    model_configs = update(model_configs, "model")
-    model_configs = update(model_configs, "model_params")
-    model_configs = update(model_configs, "optimizer_params")
+    for key in flag_keys:
+        model_configs = _update(model_configs, key)
     return model_configs
 
 
-DEFAULT_INFER_CONFIGS = """
-model_dir: models
-infer: {}
-infer_data: []
-"""
-
-
-def update_infer_model_configs(model_configs, tf_flags):
-    """ Updates model configurations with tf FLAGS, for inference
-    setting.
-
-    Args:
-        model_configs: A dictionary of all model configurations.
-        tf_flags: tf FLAGS.
-
-    Returns: The updated dictionary.
-    """
-
-    def update(mc, param_name):
-        param_str = getattr(tf_flags, param_name)
-        if param_str is None:
-            return mc
-        params = yaml.load(param_str)
-        if params is None:
-            return mc
-        return deep_merge_dict(model_configs, {param_name: params})
-
-    model_configs = update(model_configs, "model_dir")
-    model_configs = update(model_configs, "infer")
-    model_configs = update(model_configs, "infer_data")
-    return model_configs
-
-
-DEFAULT_EVAL_CONFIGS = """
-model_dir: models
-eval: {}
-eval_data: []
-"""
-
-
-def update_eval_model_configs(model_configs, tf_flags):
-    """ Updates model configurations with tf FLAGS, for evaluation
-    setting.
-
-    Args:
-        model_configs: A dictionary of all model configurations.
-        tf_flags: tf FLAGS.
-
-    Returns: The updated dictionary.
-    """
-
-    def update(mc, param_name):
-        param_str = getattr(tf_flags, param_name)
-        if param_str is None:
-            return mc
-        params = yaml.load(param_str)
-        if params is None:
-            return mc
-        return deep_merge_dict(model_configs, {param_name: params})
-
-    model_configs = update(model_configs, "model_dir")
-    model_configs = update(model_configs, "eval")
-    model_configs = update(model_configs, "eval_data")
-    return model_configs
-
-
-def load_from_config_path(config_paths, default_model_configs=None):
+def load_from_config_path(config_paths):
     """ Loads configurations from files of yaml format.
 
     Args:
         config_paths: A string (each file name is seperated by ",") or
           a list of strings (file names).
-        default_model_configs: A dictionary of model configurations
-          or None.
 
     Returns: A dictionary of model configurations, parsed from config files.
     """
     if isinstance(config_paths, six.string_types):
         config_paths = config_paths.strip().split(",")
     assert isinstance(config_paths, list) or isinstance(config_paths, tuple)
-    model_configs = default_model_configs if default_model_configs else dict()
+    model_configs = dict()
     for config_path in config_paths:
         config_path = config_path.strip()
         if not config_path:
@@ -254,7 +179,7 @@ def maybe_load_yaml(item):
     elif isinstance(item, dict):
         return item
     else:
-        raise ValueError("Got {}, expected YAML string or dict", type(item))
+        raise ValueError("Got {}, expected string or dict", type(item))
 
 
 def deep_merge_dict(dict_x, dict_y, path=None):

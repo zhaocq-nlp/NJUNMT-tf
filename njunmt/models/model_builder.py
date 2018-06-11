@@ -156,7 +156,7 @@ def model_fn(
     """
     # Create model template function
     model_str = model_configs["model"]
-    if model_str is None:
+    if model_str is None or model_str == "":
         model_str = "SequenceToSequence"
     # model_name = name or model_str.split(".")[-1]
     model_name = get_model_top_scope_name(model_str, name)

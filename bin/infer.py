@@ -16,40 +16,39 @@
 import tensorflow as tf
 
 from njunmt.utils.configurable import ModelConfigs
-from njunmt.utils.configurable import update_infer_model_configs
 from njunmt.utils.configurable import deep_merge_dict
-from njunmt.utils.configurable import DEFAULT_INFER_CONFIGS
-from njunmt.utils.configurable import maybe_load_yaml
+from njunmt.utils.configurable import define_tf_flags
+from njunmt.utils.configurable import update_configs_from_flags
 from njunmt.utils.configurable import load_from_config_path
 from njunmt.nmt_experiment import InferExperiment
 from njunmt.ensemble_experiment import EnsembleExperiment
 
-tf.flags.DEFINE_string("config_paths", "", """Path to a yaml configuration files defining FLAG
-                       values. Multiple files can be separated by commas.
-                       Files are merged recursively. Setting a key in these
-                       files is equivalent to setting the FLAG value with
-                       the same name.""")
+# define arguments for infer.py
+# format: {arg_name: [type, default_val, helper]}
+INFER_ARGS = {
+    "config_paths": ["string", "", """Path to a yaml configuration files defining FLAG values.
+                                   Multiple files can be separated by commas. Files are merged recursively.
+                                   Setting a key in these files is equivalent to
+                                   setting the FLAG value with the same name."""],
+    "infer": ["string", "", """A yaml-style string defining the inference options."""],
+    "infer_data": ["string", "", """A yaml-style string defining the inference data files."""],
+    "model_dir": ["string", "models", """The path to load models. """],
+    "weight_scheme": ["string", "average", """The weight scheme for ensemble, by default: average."""],
+}
 
-tf.flags.DEFINE_string("infer", "", "inference options")
-tf.flags.DEFINE_string("infer_data", "", "inference for data")
-tf.flags.DEFINE_string("model_dir", "",
-                       """model directory""")
-tf.flags.DEFINE_string("weight_scheme", "average",
-                       "weight scheme for ensemble, by default: average")
-FLAGS = tf.flags.FLAGS
+FLAGS = define_tf_flags(INFER_ARGS)
 
 
 def main(_argv):
-    model_configs = maybe_load_yaml(DEFAULT_INFER_CONFIGS)
     # load flags from config file
-    model_configs = load_from_config_path(FLAGS.config_paths, model_configs)
+    model_configs = load_from_config_path(FLAGS.config_paths)
     # replace parameters in configs_file with tf FLAGS
-    model_configs = update_infer_model_configs(model_configs, FLAGS)
+    model_configs = update_configs_from_flags(model_configs, FLAGS, INFER_ARGS.keys())
 
     model_dirs = FLAGS.model_dir.strip().split(",")
     if len(model_dirs) == 1:
         model_configs = deep_merge_dict(model_configs, ModelConfigs.load(model_dirs[0]))
-        model_configs = update_infer_model_configs(model_configs, FLAGS)
+        model_configs = update_configs_from_flags(model_configs, FLAGS, INFER_ARGS.keys())
         runner = InferExperiment(model_configs=model_configs)
     else:
         runner = EnsembleExperiment(model_configs=model_configs, model_dirs=model_dirs,
