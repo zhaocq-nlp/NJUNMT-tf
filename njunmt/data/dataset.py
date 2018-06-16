@@ -18,7 +18,49 @@ from __future__ import print_function
 
 import six
 
-from njunmt.utils.misc import get_labels_files
+from njunmt.utils.misc import access_multiple_files
+
+
+class Dataset_new(object):
+    """ Class for training data and evaluation data """
+
+    def __init__(self,
+                 vocab_source,
+                 vocab_target,
+                 features_file,
+                 labels_file=None):
+        """ Initializes the data set.
+
+        Args:
+            vocab_source: A `Vocab` instance for source side.
+            vocab_target: A `Vocab` instance for target side.
+            features_file: A string.
+            labels_file: A string.
+        """
+        self._vocab_source = vocab_source
+        self._vocab_target = vocab_target
+        self._features_file = features_file
+        self._labels_file = labels_file
+
+    @property
+    def vocab_source(self):
+        """ Returns the source vocab. """
+        return self._vocab_source
+
+    @property
+    def vocab_target(self):
+        """ Returns the target vocab. """
+        return self._vocab_target
+
+    @property
+    def features_file(self):
+        """ Returns the name of source file. """
+        return self._features_file
+
+    @property
+    def labels_file(self):
+        """ Returns the name of target file. """
+        return self._labels_file
 
 
 class Dataset(object):
@@ -47,9 +89,9 @@ class Dataset(object):
         self._train_labels_file = train_labels_file
         self._eval_features_file = eval_features_file
         if isinstance(eval_labels_file, list):
-            self._eval_labels_file = [get_labels_files(f) for f in eval_labels_file]
+            self._eval_labels_file = [access_multiple_files(f) for f in eval_labels_file]
         elif isinstance(eval_labels_file, six.string_types):
-            self._eval_labels_file = get_labels_files(eval_labels_file)
+            self._eval_labels_file = access_multiple_files(eval_labels_file)
         else:
             self._eval_labels_file = None
 

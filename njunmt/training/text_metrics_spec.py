@@ -28,8 +28,8 @@ import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.training import saver as saver_lib
 
-from njunmt.data.text_inputter import ParallelTextInputter
-from njunmt.data.text_inputter import TextLineInputter
+from njunmt.data.text_inputter import ParallelTextInputter_new
+from njunmt.data.text_inputter import TextLineInputter_new
 from njunmt.inference.decode import evaluate
 from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn
@@ -40,6 +40,7 @@ from njunmt.utils.constants import ModeKeys
 from njunmt.utils.metrics import multi_bleu_score
 from njunmt.utils.misc import get_dict_from_collection
 from njunmt.utils.misc import open_file
+from njunmt.utils.misc import access_multiple_files
 from njunmt.utils.summary_writer import SummaryWriter
 from njunmt.tools.tokenizeChinese import to_chinese_char
 
@@ -187,21 +188,14 @@ class LossMetricSpec(TextMetricSpec):
         Furthermore, if the decay_type of optimizer is "loss_decay", creates
         the controller variables/operations.
         """
-        text_inputter = ParallelTextInputter(
+        text_inputter = ParallelTextInputter_new(
             dataset=self._dataset,
-            features_field_name="eval_features_file",
-            labels_field_name="eval_labels_file",
             batch_size=self._batch_size,
             batch_tokens_size=None,
             shuffle_every_epoch=None,
             bucketing=True)
-        estimator_spec = model_fn(
-            model_configs=self._model_configs,
-            mode=ModeKeys.EVAL,
-            dataset=self._dataset,
-            name=self._model_name,
-            reuse=True,
-            verbose=False)
+        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.EVAL, vocab_source=self._dataset.vocab_source,
+                                  vocab_target=self._dataset.vocab_target, name=self._model_name, reuse=True, verbose=False)
         self._eval_feeding_data = text_inputter.make_feeding_data(
             input_fields=estimator_spec.input_fields, in_memory=True)
         self._loss_op = estimator_spec.loss
@@ -337,13 +331,12 @@ class BleuMetricSpec(TextMetricSpec):
             beam_size=self._beam_size,
             maximum_labels_length=self._maximum_labels_length,
             length_penalty=self._length_penalty)
-        estimator_spec = model_fn(model_configs=self._model_configs,
-                                  mode=ModeKeys.INFER, dataset=self._dataset,
-                                  name=self._model_name, reuse=True, verbose=False)
+        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.INFER, vocab_source=self._dataset.vocab_source,
+                                  vocab_target=self._dataset.vocab_target, name=self._model_name, reuse=True, verbose=False)
         self._predict_ops = estimator_spec.predictions
-        text_inputter = TextLineInputter(
-            dataset=self._dataset,
-            data_field_name="eval_features_file",
+        text_inputter = TextLineInputter_new(
+            data_files=self._dataset.features_file,
+            vocab=self._dataset.vocab_source,
             batch_size=self._batch_size)
         self._infer_data = text_inputter.make_feeding_data(
             input_fields=estimator_spec.input_fields)
@@ -354,14 +347,14 @@ class BleuMetricSpec(TextMetricSpec):
         self._read_ckpt_bleulog()
         # load references
         self._references = []
-        for rfile in self._dataset.eval_labels_file:
+        for rfile in access_multiple_files(self._dataset.labels_file):
             with open_file(rfile) as fp:
                 if self._char_level:
                     self._references.append(to_chinese_char(fp.readlines()))
                 else:
                     self._references.append(fp.readlines())
         self._references = list(map(list, zip(*self._references)))
-        with open_file(self._dataset.eval_features_file) as fp:
+        with open_file(self._dataset.features_file) as fp:
             self._sources = fp.readlines()
         self._bad_count = 0
         self._best_bleu_score = 0.

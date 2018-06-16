@@ -339,24 +339,25 @@ def shuffle_data(from_binding, to_binding):
     os.system(cmd)
 
 
-def get_labels_files(labels_file):
-    """ Gets the list of labels file.
+def access_multiple_files(name):
+    """ Gets the list of files.
 
     Args:
-        labels_file: A string, the prefix of the labels file.
+        name: A string, the prefix of the files.
 
     Returns: A list or None.
     """
-    if labels_file is None:
-        return None
+    assert name
     ret = []
-    if gfile.Exists(labels_file):
-        ret.append(labels_file)
+    if gfile.Exists(name):
+        ret.append(name)
     else:
         idx = 0
-        while gfile.Exists(labels_file + str(idx)):
-            ret.append(labels_file + str(idx))
+        while gfile.Exists(name + str(idx)):
+            ret.append(name + str(idx))
             idx += 1
+    assert len(ret) > 0, (
+        "Fail to access file {} or {}0...".format(name, name))
     return ret
 
 

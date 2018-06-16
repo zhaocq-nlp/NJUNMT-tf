@@ -18,13 +18,14 @@ from abc import ABCMeta, abstractmethod
 import six
 import tensorflow as tf
 
-from njunmt.data.dataset import Dataset
-from njunmt.data.text_inputter import ParallelTextInputter
-from njunmt.data.text_inputter import TextLineInputter
+from njunmt.data.dataset import Dataset_new
+from njunmt.data.text_inputter import ParallelTextInputter_new
+from njunmt.data.text_inputter import TextLineInputter_new
 from njunmt.data.vocab import Vocab
 from njunmt.inference.decode import evaluate_with_attention
 from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn
+from njunmt.training.text_metrics_spec import build_eval_metrics
 from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.configurable import parse_params
 from njunmt.utils.configurable import print_params
@@ -79,19 +80,19 @@ class TrainingExperiment(Experiment):
         self._model_configs["train"] = training_options
         self._model_configs["data"] = datasets_params
         print_params("Datasets: ", self._model_configs["data"])
-        print_params("Training parameters: ", self._model_configs["train"])
+        print_params("Training options: ", self._model_configs["train"])
         ModelConfigs.dump(self._model_configs, self._model_configs["model_dir"])
 
     @staticmethod
     def default_datasets_params():
-        """ Returns a dictionary of default "dataset" parameters. """
+        """ Returns a dictionary of default "data" parameters. """
         return {
-            "source_words_vocabulary": None,
-            "target_words_vocabulary": None,
             "train_features_file": None,
             "train_labels_file": None,
             "eval_features_file": None,
             "eval_labels_file": None,
+            "source_words_vocabulary": None,
+            "target_words_vocabulary": None,
             "source_bpecodes": {},
             "target_bpecodes": {}
         }
@@ -107,7 +108,8 @@ class TrainingExperiment(Experiment):
             "eval_steps": 100,
             "update_cycle": 1,  # for pseudo multi-gpu
             "pretrain_model": None,
-            "reverse_target": False,
+            "features_r2l": False,
+            "labels_r2l": False,
             "maximum_features_length": None,
             "maximum_labels_length": None,
             "shuffle_every_epoch": None
@@ -116,32 +118,35 @@ class TrainingExperiment(Experiment):
     def run(self):
         """ Trains the model. """
         # vocabulary
-        self._vocab_source = Vocab(
+        vocab_source = Vocab(
             filename=self._model_configs["data"]["source_words_vocabulary"],
             bpe_codes=self._model_configs["data"]["source_bpecodes"],
-            reverse_seq=False)
-        self._vocab_target = Vocab(
+            reverse_seq=self._model_configs["train"]["features_r2l"])
+        vocab_target = Vocab(
             filename=self._model_configs["data"]["target_words_vocabulary"],
             bpe_codes=self._model_configs["data"]["target_bpecodes"],
-            reverse_seq=self._model_configs["train"]["reverse_target"])
+            reverse_seq=self._model_configs["train"]["labels_r2l"])
         # build dataset
-        dataset = Dataset(
-            self._vocab_source,
-            self._vocab_target,
-            train_features_file=self._model_configs["data"]["train_features_file"],
-            train_labels_file=self._model_configs["data"]["train_labels_file"],
-            eval_features_file=self._model_configs["data"]["eval_features_file"],
-            eval_labels_file=self._model_configs["data"]["eval_labels_file"])
+        train_dataset = Dataset_new(
+            vocab_source=vocab_source,
+            vocab_target=vocab_target,
+            features_file=self._model_configs["data"]["train_features_file"],
+            labels_file=self._model_configs["data"]["train_labels_file"])
+
+        eval_dataset = Dataset_new(
+            vocab_source=vocab_source,
+            vocab_target=vocab_target,
+            features_file=self._model_configs["data"]["eval_features_file"],
+            labels_file=self._model_configs["data"]["eval_labels_file"])
 
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
-        estimator_spec = model_fn(model_configs=self._model_configs,
-                                  mode=ModeKeys.TRAIN,
-                                  dataset=dataset,
-                                  name=self._model_configs["problem_name"])
+        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.TRAIN, vocab_source=vocab_source,
+                                  vocab_target=vocab_target, name=self._model_configs["problem_name"])
         train_ops = estimator_spec.train_ops
         hooks = estimator_spec.training_hooks
+
         # build training session
         sess = tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
@@ -149,20 +154,20 @@ class TrainingExperiment(Experiment):
                 checkpoint_dir=None,
                 master="",
                 config=config),
-            hooks=hooks)
+            hooks=tuple(hooks) + tuple(build_eval_metrics
+                                       (self._model_configs, eval_dataset,
+                                        model_name=estimator_spec.name)))
 
-        train_text_inputter = ParallelTextInputter(
-            dataset,
-            "train_features_file",
-            "train_labels_file",
-            self._model_configs["train"]["batch_size"],
-            self._model_configs["train"]["batch_tokens_size"],
-            self._model_configs["train"]["shuffle_every_epoch"],
-            fill_full_batch=True)
-        train_data = train_text_inputter.make_feeding_data(
-            input_fields=estimator_spec.input_fields,
+        train_text_inputter = ParallelTextInputter_new(
+            train_dataset,
             maximum_features_length=self._model_configs["train"]["maximum_features_length"],
-            maximum_labels_length=self._model_configs["train"]["maximum_labels_length"])
+            maximum_labels_length=self._model_configs["train"]["maximum_labels_length"],
+            batch_size=self._model_configs["train"]["batch_size"],
+            batch_tokens_size=self._model_configs["train"]["batch_tokens_size"],
+            shuffle_every_epoch=self._model_configs["train"]["shuffle_every_epoch"],
+            fill_full_batch=True, bucketing=True)
+        train_data = train_text_inputter.make_feeding_data(
+            input_fields=estimator_spec.input_fields)
 
         eidx = [0, 0]
         update_cycle = [self._model_configs["train"]["update_cycle"], 1]
@@ -240,20 +245,20 @@ class InferExperiment(Experiment):
     def run(self):
         """Infers data files. """
         # build datasets
-        self._vocab_source = Vocab(
+        vocab_source = Vocab(
             filename=self._model_configs["infer"]["source_words_vocabulary"],
             bpe_codes=self._model_configs["infer"]["source_bpecodes"],
-            reverse_seq=False)
-        self._vocab_target = Vocab(
+            reverse_seq=self._model_configs["train"]["features_r2l"])
+        vocab_target = Vocab(
             filename=self._model_configs["infer"]["target_words_vocabulary"],
             bpe_codes=self._model_configs["infer"]["target_bpecodes"],
-            reverse_seq=self._model_configs["train"]["reverse_target"])
+            reverse_seq=self._model_configs["train"]["labels_r2l"])
         # build dataset
-        dataset = Dataset(
-            self._vocab_source,
-            self._vocab_target,
-            eval_features_file=[p["features_file"] for p
-                                in self._model_configs["infer_data"]])
+        dataset = Dataset_new(
+            vocab_source=vocab_source,
+            vocab_target=vocab_target,
+            features_file=[p["features_file"] for p
+                           in self._model_configs["infer_data"]])
 
         self._model_configs = update_infer_params(
             self._model_configs,
@@ -261,17 +266,16 @@ class InferExperiment(Experiment):
             maximum_labels_length=self._model_configs["infer"]["maximum_labels_length"],
             length_penalty=self._model_configs["infer"]["length_penalty"])
         # build model
-        estimator_spec = model_fn(model_configs=self._model_configs,
-                                  mode=ModeKeys.INFER,
-                                  dataset=dataset,
-                                  name=self._model_configs["problem_name"])
+        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.INFER, vocab_source=vocab_source,
+                                  vocab_target=vocab_target, name=self._model_configs["problem_name"])
         predict_op = estimator_spec.predictions
 
         sess = self._build_default_session()
 
-        text_inputter = TextLineInputter(
-            dataset=dataset,
-            data_field_name="eval_features_file",
+        text_inputter = TextLineInputter_new(
+            data_files=[p["features_file"] for p
+                        in self._model_configs["infer_data"]],
+            vocab=vocab_source,
             batch_size=self._model_configs["infer"]["batch_size"])
         # reload
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
@@ -295,8 +299,8 @@ class InferExperiment(Experiment):
                   prediction_op=predict_op,
                   infer_data=infer_data,
                   output=param["output_file"],
-                  vocab_source=self._vocab_source,
-                  vocab_target=self._vocab_target,
+                  vocab_source=vocab_source,
+                  vocab_target=vocab_target,
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=param["output_attention"],
                   tokenize_output=self._model_configs["infer"]["char_level"],
@@ -359,41 +363,39 @@ class EvalExperiment(Experiment):
     def run(self):
         """Infers data files. """
         # build datasets
-        self._vocab_source = Vocab(
+        vocab_source = Vocab(
             filename=self._model_configs["eval"]["source_words_vocabulary"],
             bpe_codes=self._model_configs["eval"]["source_bpecodes"],
-            reverse_seq=False)
-        self._vocab_target = Vocab(
+            reverse_seq=self._model_configs["train"]["features_r2l"])
+        vocab_target = Vocab(
             filename=self._model_configs["eval"]["target_words_vocabulary"],
             bpe_codes=self._model_configs["eval"]["target_bpecodes"],
-            reverse_seq=self._model_configs["train"]["reverse_target"])
+            reverse_seq=self._model_configs["train"]["labels_r2l"])
         # build dataset
-        dataset = Dataset(
-            self._vocab_source,
-            self._vocab_target,
-            eval_features_file=[p["features_file"] for p
-                                in self._model_configs["eval_data"]],
-            eval_labels_file=[p["labels_file"] for p
-                              in self._model_configs["eval_data"]])
+        # dataset = Dataset_new(
+        #     self._vocab_source,
+        #     self._vocab_target,
+        #     features_file=[p["features_file"] for p
+        #                         in self._model_configs["eval_data"]],
+        #     labels_file=[p["labels_file"] for p
+        #                       in self._model_configs["eval_data"]])
 
         # update evaluation model config
         self._model_configs, metric_str = update_eval_metric(
             self._model_configs, self._model_configs["eval"]["metric"])
         tf.logging.info("Evaluating using {}".format(metric_str))
         # build model
-        estimator_spec = model_fn(model_configs=self._model_configs,
-                                  mode=ModeKeys.EVAL,
-                                  dataset=dataset,
-                                  name=self._model_configs["problem_name"])
+        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.EVAL, vocab_source=vocab_source,
+                                  vocab_target=vocab_target, name=self._model_configs["problem_name"])
 
         sess = self._build_default_session()
-        text_inputter = ParallelTextInputter(
-            dataset=dataset,
-            features_field_name="eval_features_file",
-            labels_field_name="eval_labels_file",
-            batch_size=self._model_configs["eval"]["batch_size"],
-            bucketing=(sum([p["output_attention"]
-                            for p in self._model_configs["eval_data"]]) == 0))
+        # text_inputter = ParallelTextInputter_new(
+        #     dataset=dataset,
+        #     features_field_name="eval_features_file",
+        #     labels_field_name="eval_labels_file",
+        #     batch_size=self._model_configs["eval"]["batch_size"],
+        #     bucketing=(sum([p["output_attention"]
+        #                     for p in self._model_configs["eval_data"]]) == 0))
         # reload
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
         if checkpoint_path:
@@ -407,23 +409,30 @@ class EvalExperiment(Experiment):
         tf.logging.info("Start evaluation.")
         overall_start_time = time.time()
 
-        for eval_data, param in zip(text_inputter.make_feeding_data(
-                input_fields=estimator_spec.input_fields, in_memory=True),
-                self._model_configs["eval_data"]):
-            tf.logging.info("Evaluation Source File: {}.".format(param["features_file"]))
-            tf.logging.info("Evaluation Target File: {}.".format(param["labels_file"]))
+        for data_param in self._model_configs["eval_data"]:
+            tf.logging.info("Evaluation Source File: {}.".format(data_param["features_file"]))
+            tf.logging.info("Evaluation Target File: {}.".format(data_param["labels_file"]))
+            eval_data = ParallelTextInputter_new(
+                Dataset_new(features_file=data_param["features_file"],
+                            labels_file=data_param["labels_file"],
+                            vocab_source=vocab_source,
+                            vocab_target=vocab_target),
+                batch_size=self._model_configs["eval"]["batch_size"],
+                bucketing=False).make_feeding_data(
+                input_fields=estimator_spec.input_fields, in_memory=True)
+
             start_time = time.time()
             result = evaluate_with_attention(
                 sess=sess,
                 loss_op=estimator_spec.loss,
                 eval_data=eval_data,
-                vocab_source=self._vocab_source,
-                vocab_target=self._vocab_target,
+                vocab_source=vocab_source,
+                vocab_target=vocab_target,
                 attention_op=estimator_spec.predictions \
-                    if param["output_attention"] else None,
-                output_filename_prefix=param["labels_file"].strip().split("/")[-1])
+                    if data_param["output_attention"] else None,
+                output_filename_prefix=data_param["labels_file"].strip().split("/")[-1])
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
-                            .format(param["features_file"], str(time.time() - start_time)))
+                            .format(data_param["features_file"], str(time.time() - start_time)))
             tf.logging.info("Evaluation Score ({} on {}): {}"
-                            .format(metric_str, param["features_file"], result))
+                            .format(metric_str, data_param["features_file"], result))
         tf.logging.info("Total Elapsed Time: %s" % str(time.time() - overall_start_time))

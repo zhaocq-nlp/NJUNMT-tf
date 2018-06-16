@@ -36,7 +36,7 @@ from njunmt.utils.expert_utils import repeat_n_times
 
 
 class EstimatorSpec(
-    namedtuple('EstimatorSpec', ['input_fields',
+    namedtuple('EstimatorSpec', ['name', 'input_fields',
                                  'predictions', 'loss', 'train_ops',
                                  'training_chief_hooks', 'training_hooks'])):
     """ Defines a collection of operations and objects
@@ -46,6 +46,7 @@ class EstimatorSpec(
     """
 
     def __new__(cls,
+                name,
                 mode,
                 input_fields=None,
                 predictions=None,
@@ -61,6 +62,7 @@ class EstimatorSpec(
         * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
         Args:
+            name: The model name.
             input_fields: A dict of placeholders.
             mode: A `ModeKeys`. Specifies if this is training, evaluation or
               inference.
@@ -98,6 +100,7 @@ class EstimatorSpec(
                         hook))
         return super(EstimatorSpec, cls).__new__(
             cls,
+            name=name,
             input_fields=input_fields,
             predictions=predictions,
             loss=loss,
@@ -133,7 +136,8 @@ def _add_to_display_collection(input_fields):
 def model_fn(
         model_configs,
         mode,
-        dataset,
+        vocab_source,
+        vocab_target,
         name=None,
         reuse=None,
         distributed_mode=False,
@@ -144,7 +148,8 @@ def model_fn(
     Args:
         model_configs: A dictionary of all configurations.
         mode: A mode.
-        dataset: A `Dataset` object.
+        vocab_source: A `Vocab` for source side.
+        vocab_target: A `Vocab` for target side.
         name: A string, the name of top-level of the variable scope.
         reuse: Whether to reuse all variables, the parameter passed
           to `tf.variable_scope()`.
@@ -167,8 +172,8 @@ def model_fn(
     model = eval(model_str)(
         params=model_configs["model_params"],
         mode=mode,
-        vocab_source=dataset.vocab_source,
-        vocab_target=dataset.vocab_target,
+        vocab_source=vocab_source,
+        vocab_target=vocab_target,
         name=model_name,
         verbose=verbose)
     # create expert_utils.Parallelism
@@ -204,6 +209,7 @@ def model_fn(
     if mode == ModeKeys.INFER:
         predictions = model_returns[1]
         return EstimatorSpec(
+            model_name,
             mode,
             input_fields=input_fields,
             predictions=predictions)
@@ -211,6 +217,7 @@ def model_fn(
     if mode == ModeKeys.EVAL:
         loss_op, attention = model_returns[1:]
         return EstimatorSpec(
+            model_name,
             mode,
             input_fields=input_fields,
             loss=loss_op,  # a list of tuples [(loss_sum0, weight_sum0), (loss_sum1, weight_sum1), ...]
@@ -226,10 +233,11 @@ def model_fn(
     tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, train_loss)
     # build training hooks
     hooks = build_hooks(model_configs, distributed_mode=distributed_mode, is_chief=is_chief)
-    from njunmt.training.text_metrics_spec import build_eval_metrics
-    hooks.extend(build_eval_metrics(model_configs, dataset,
-                                    is_cheif=is_chief, model_name=model_name))
+    # from njunmt.training.text_metrics_spec import build_eval_metrics
+    # hooks.extend(build_eval_metrics(model_configs, eval_dataset,
+    #                                 is_cheif=is_chief, model_name=model_name))
     return EstimatorSpec(
+        name,
         mode,
         input_fields=input_fields,
         loss=train_loss,

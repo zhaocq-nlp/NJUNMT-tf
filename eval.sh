@@ -20,5 +20,8 @@ python -m bin.eval \
     target_bpecodes: " \
   --eval_data "
     - features_file: ${DATA_DIR}/toy.zh
-      labels_file: ${DATA_DIR}/toy.en
+      labels_file: ${DATA_DIR}/toy.en0
+      output_attention: false
+    - features_file: ${DATA_DIR}/toy.zh
+      labels_file: ${DATA_DIR}/toy.en0
       output_attention: false"
