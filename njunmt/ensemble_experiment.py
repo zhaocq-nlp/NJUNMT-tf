@@ -16,8 +16,8 @@ import time
 
 import tensorflow as tf
 
-from njunmt.data.dataset import Dataset
-from njunmt.data.text_inputter import TextLineInputter
+from njunmt.data.dataset import Dataset_new
+from njunmt.data.text_inputter import TextLineInputter_new
 from njunmt.data.vocab import Vocab
 from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn_ensemble
@@ -75,26 +75,28 @@ class EnsembleExperiment(Experiment):
 
     def run(self):
         """ Runs ensemble model. """
-        self._vocab_source = Vocab(
+        vocab_source = Vocab(
             filename=self._model_configs["infer"]["source_words_vocabulary"],
             bpe_codes=self._model_configs["infer"]["source_bpecodes"])
-        self._vocab_target = Vocab(
+        vocab_target = Vocab(
             filename=self._model_configs["infer"]["target_words_vocabulary"],
             bpe_codes=self._model_configs["infer"]["target_bpecodes"])
         # build dataset
-        dataset = Dataset(
-            self._vocab_source,
-            self._vocab_target,
-            eval_features_file=[p["features_file"] for p
-                                in self._model_configs["infer_data"]])
+        # dataset = Dataset(
+        #     self._vocab_source,
+        #     self._vocab_target,
+        #     eval_features_file=[p["features_file"] for p
+        #                         in self._model_configs["infer_data"]])
         estimator_spec = model_fn_ensemble(
-            self._model_dirs, dataset, weight_scheme=self._weight_scheme,
+            self._model_dirs, vocab_source, vocab_target,
+            weight_scheme=self._weight_scheme,
             inference_options=self._model_configs["infer"])
         predict_op = estimator_spec.predictions
         sess = self._build_default_session()
-        text_inputter = TextLineInputter(
-            dataset=dataset,
-            data_field_name="eval_features_file",
+        text_inputter = TextLineInputter_new(
+            data_files=[p["features_file"] for p
+                                in self._model_configs["infer_data"]],
+            vocab=vocab_source,
             batch_size=self._model_configs["infer"]["batch_size"])
         sess.run(tf.global_variables_initializer())
         tf.logging.info("Start inference.")
@@ -108,8 +110,8 @@ class EnsembleExperiment(Experiment):
                   prediction_op=predict_op,
                   infer_data=feeding_data,
                   output=param["output_file"],
-                  vocab_source=self._vocab_source,
-                  vocab_target=self._vocab_target,
+                  vocab_source=vocab_source,
+                  vocab_target=vocab_target,
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=False,
                   tokenize_output=self._model_configs["infer"]["char_level"],

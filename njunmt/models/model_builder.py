@@ -248,7 +248,8 @@ def model_fn(
 
 def model_fn_ensemble(
         model_dirs,
-        dataset,
+        vocab_source,
+        vocab_target,
         weight_scheme,
         inference_options,
         verbose=True):
@@ -257,7 +258,8 @@ def model_fn_ensemble(
 
     Args:
         model_dirs: A list of model directories (checkpoints).
-        dataset: A `Dataset` object.
+        vocab_source: A `Vocab` for source side.
+        vocab_target: A `Vocab` for target side.
         weight_scheme: A string, the ensemble weights. See
           `EnsembleModel.get_ensemble_weights()` for more details.
         inference_options: Contains beam_size, length_penalty and
@@ -299,92 +301,22 @@ def model_fn_ensemble(
         model = eval(model_configs["model"])(
             params=model_configs["model_params"],
             mode=ModeKeys.INFER,
-            vocab_source=dataset.vocab_source,
-            vocab_target=dataset.vocab_target,
+            vocab_source=vocab_source,
+            vocab_target=vocab_target,
             name=os.path.join(ensemble_scope_prefix, model_name),
             verbose=False)
         models.append(model)
         if input_fields is None:
             input_fields = parallelism(lambda: eval(model_configs["model"]).create_input_fields(ModeKeys.INFER))
     ensemble_model = EnsembleModel(
-        vocab_target=dataset.vocab_target,
+        vocab_target=vocab_target,
         base_models=models,
         weight_scheme=weight_scheme,
         inference_options=inference_options)
     predictions = parallelism(ensemble_model.build, input_fields)
     return EstimatorSpec(
+        "",
         ModeKeys.INFER,
         input_fields=input_fields,
         predictions=predictions)
 
-
-def model_fn_ensemble_bak(
-        model_dirs,
-        dataset,
-        weight_scheme,
-        inference_options,
-        verbose=True):
-    """ Reloads NMT models from checkpoints and builds the ensemble
-    model inference.
-
-    Args:
-        model_dirs: A list of model directories (checkpoints).
-        dataset: A `Dataset` object.
-        weight_scheme: A string, the ensemble weights. See
-          `EnsembleModel.get_ensemble_weights()` for more details.
-        inference_options: Contains beam_size, length_penalty and
-          maximum_labels_length.
-        verbose: Print logging info if set True.
-
-    Returns: A `EstimatorSpec` object.
-    """
-
-    # load variable, rename (add prefix to varname), build model
-    models = []
-    input_fields = None
-    for index, model_dir in enumerate(model_dirs):
-        if verbose:
-            tf.logging.info("loading variables from {}".format(model_dir))
-        # load variables
-        model_name = None
-        ensemble_scope_prefix = None
-        for var_name, _ in tf.contrib.framework.list_variables(model_dir):
-            if var_name.startswith("OptimizeLoss"):
-                continue
-            if model_name is None:
-                model_name = inspect_varname_prefix(var_name)
-            var = tf.contrib.framework.load_variable(model_dir, var_name)
-            with tf.variable_scope(Constants.ENSEMBLE_VARNAME_PREFIX + str(index)):
-                if ensemble_scope_prefix is None:
-                    ensemble_scope_prefix = tf.get_variable_scope().name
-                var = tf.get_variable(
-                    name=var_name, shape=var.shape, dtype=tf.float32,
-                    initializer=tf.constant_initializer(var))
-        # load model configs
-        assert model_name, (
-            "Fail to fetch model name")
-        model_configs = ModelConfigs.load(model_dir)
-        if verbose:
-            tf.logging.info("Create model: {}.".format(
-                model_configs["model"]))
-        model = eval(model_configs["model"])(
-            params=model_configs["model_params"],
-            mode=ModeKeys.INFER,
-            vocab_source=dataset.vocab_source,
-            vocab_target=dataset.vocab_target,
-            name=os.path.join(ensemble_scope_prefix, model_name),
-            verbose=False)
-        models.append(model)
-        if input_fields is None:
-            input_fields = eval(model_configs["model"]).create_input_fields(ModeKeys.INFER)
-    ensemble_model = EnsembleModel(
-        vocab_target=dataset.vocab_target,
-        base_models=models,
-        weight_scheme=weight_scheme,
-        inference_options=inference_options)
-    with tf.variable_scope("", reuse=True):
-        predictions = ensemble_model.build(input_fields=input_fields)
-    return EstimatorSpec(
-        ModeKeys.INFER,
-        input_fields=input_fields,
-        predictions=predictions)
