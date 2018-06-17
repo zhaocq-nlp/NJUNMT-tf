@@ -28,8 +28,8 @@ import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.training import saver as saver_lib
 
-from njunmt.data.text_inputter import ParallelTextInputter_new
-from njunmt.data.text_inputter import TextLineInputter_new
+from njunmt.data.text_inputter import ParallelTextInputter
+from njunmt.data.text_inputter import TextLineInputter
 from njunmt.inference.decode import evaluate
 from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn
@@ -188,7 +188,7 @@ class LossMetricSpec(TextMetricSpec):
         Furthermore, if the decay_type of optimizer is "loss_decay", creates
         the controller variables/operations.
         """
-        text_inputter = ParallelTextInputter_new(
+        text_inputter = ParallelTextInputter(
             dataset=self._dataset,
             batch_size=self._batch_size,
             batch_tokens_size=None,
@@ -334,7 +334,7 @@ class BleuMetricSpec(TextMetricSpec):
         estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.INFER, vocab_source=self._dataset.vocab_source,
                                   vocab_target=self._dataset.vocab_target, name=self._model_name, reuse=True, verbose=False)
         self._predict_ops = estimator_spec.predictions
-        text_inputter = TextLineInputter_new(
+        text_inputter = TextLineInputter(
             data_files=self._dataset.features_file,
             vocab=self._dataset.vocab_source,
             batch_size=self._batch_size)

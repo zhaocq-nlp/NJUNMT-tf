@@ -16,8 +16,7 @@ import time
 
 import tensorflow as tf
 
-from njunmt.data.dataset import Dataset_new
-from njunmt.data.text_inputter import TextLineInputter_new
+from njunmt.data.text_inputter import TextLineInputter
 from njunmt.data.vocab import Vocab
 from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn_ensemble
@@ -81,19 +80,14 @@ class EnsembleExperiment(Experiment):
         vocab_target = Vocab(
             filename=self._model_configs["infer"]["target_words_vocabulary"],
             bpe_codes=self._model_configs["infer"]["target_bpecodes"])
-        # build dataset
-        # dataset = Dataset(
-        #     self._vocab_source,
-        #     self._vocab_target,
-        #     eval_features_file=[p["features_file"] for p
-        #                         in self._model_configs["infer_data"]])
+
         estimator_spec = model_fn_ensemble(
             self._model_dirs, vocab_source, vocab_target,
             weight_scheme=self._weight_scheme,
             inference_options=self._model_configs["infer"])
         predict_op = estimator_spec.predictions
         sess = self._build_default_session()
-        text_inputter = TextLineInputter_new(
+        text_inputter = TextLineInputter(
             data_files=[p["features_file"] for p
                                 in self._model_configs["infer_data"]],
             vocab=vocab_source,

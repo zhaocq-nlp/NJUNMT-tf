@@ -18,9 +18,9 @@ from abc import ABCMeta, abstractmethod
 import six
 import tensorflow as tf
 
-from njunmt.data.dataset import Dataset_new
-from njunmt.data.text_inputter import ParallelTextInputter_new
-from njunmt.data.text_inputter import TextLineInputter_new
+from njunmt.data.dataset import Dataset
+from njunmt.data.text_inputter import ParallelTextInputter
+from njunmt.data.text_inputter import TextLineInputter
 from njunmt.data.vocab import Vocab
 from njunmt.inference.decode import evaluate_with_attention
 from njunmt.inference.decode import infer
@@ -127,13 +127,13 @@ class TrainingExperiment(Experiment):
             bpe_codes=self._model_configs["data"]["target_bpecodes"],
             reverse_seq=self._model_configs["train"]["labels_r2l"])
         # build dataset
-        train_dataset = Dataset_new(
+        train_dataset = Dataset(
             vocab_source=vocab_source,
             vocab_target=vocab_target,
             features_file=self._model_configs["data"]["train_features_file"],
             labels_file=self._model_configs["data"]["train_labels_file"])
 
-        eval_dataset = Dataset_new(
+        eval_dataset = Dataset(
             vocab_source=vocab_source,
             vocab_target=vocab_target,
             features_file=self._model_configs["data"]["eval_features_file"],
@@ -158,7 +158,7 @@ class TrainingExperiment(Experiment):
                                        (self._model_configs, eval_dataset,
                                         model_name=estimator_spec.name)))
 
-        train_text_inputter = ParallelTextInputter_new(
+        train_text_inputter = ParallelTextInputter(
             train_dataset,
             maximum_features_length=self._model_configs["train"]["maximum_features_length"],
             maximum_labels_length=self._model_configs["train"]["maximum_labels_length"],
@@ -254,7 +254,7 @@ class InferExperiment(Experiment):
             bpe_codes=self._model_configs["infer"]["target_bpecodes"],
             reverse_seq=self._model_configs["train"]["labels_r2l"])
         # build dataset
-        dataset = Dataset_new(
+        dataset = Dataset(
             vocab_source=vocab_source,
             vocab_target=vocab_target,
             features_file=[p["features_file"] for p
@@ -272,7 +272,7 @@ class InferExperiment(Experiment):
 
         sess = self._build_default_session()
 
-        text_inputter = TextLineInputter_new(
+        text_inputter = TextLineInputter(
             data_files=[p["features_file"] for p
                         in self._model_configs["infer_data"]],
             vocab=vocab_source,
@@ -412,11 +412,11 @@ class EvalExperiment(Experiment):
         for data_param in self._model_configs["eval_data"]:
             tf.logging.info("Evaluation Source File: {}.".format(data_param["features_file"]))
             tf.logging.info("Evaluation Target File: {}.".format(data_param["labels_file"]))
-            eval_data = ParallelTextInputter_new(
-                Dataset_new(features_file=data_param["features_file"],
-                            labels_file=data_param["labels_file"],
-                            vocab_source=vocab_source,
-                            vocab_target=vocab_target),
+            eval_data = ParallelTextInputter(
+                Dataset(features_file=data_param["features_file"],
+                        labels_file=data_param["labels_file"],
+                        vocab_source=vocab_source,
+                        vocab_target=vocab_target),
                 batch_size=self._model_configs["eval"]["batch_size"],
                 bucketing=False).make_feeding_data(
                 input_fields=estimator_spec.input_fields, in_memory=True)
