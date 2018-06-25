@@ -142,8 +142,12 @@ class TrainingExperiment(Experiment):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
-        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.TRAIN, vocab_source=vocab_source,
-                                  vocab_target=vocab_target, name=self._model_configs["problem_name"])
+        estimator_spec = model_fn(
+            model_configs=self._model_configs,
+            mode=ModeKeys.TRAIN,
+            vocab_source=vocab_source,
+            vocab_target=vocab_target,
+            name=self._model_configs["problem_name"])
         train_ops = estimator_spec.train_ops
         hooks = estimator_spec.training_hooks
 
@@ -371,14 +375,6 @@ class EvalExperiment(Experiment):
             filename=self._model_configs["eval"]["target_words_vocabulary"],
             bpe_codes=self._model_configs["eval"]["target_bpecodes"],
             reverse_seq=self._model_configs["train"]["labels_r2l"])
-        # build dataset
-        # dataset = Dataset_new(
-        #     self._vocab_source,
-        #     self._vocab_target,
-        #     features_file=[p["features_file"] for p
-        #                         in self._model_configs["eval_data"]],
-        #     labels_file=[p["labels_file"] for p
-        #                       in self._model_configs["eval_data"]])
 
         # update evaluation model config
         self._model_configs, metric_str = update_eval_metric(
@@ -389,13 +385,7 @@ class EvalExperiment(Experiment):
                                   vocab_target=vocab_target, name=self._model_configs["problem_name"])
 
         sess = self._build_default_session()
-        # text_inputter = ParallelTextInputter_new(
-        #     dataset=dataset,
-        #     features_field_name="eval_features_file",
-        #     labels_field_name="eval_labels_file",
-        #     batch_size=self._model_configs["eval"]["batch_size"],
-        #     bucketing=(sum([p["output_attention"]
-        #                     for p in self._model_configs["eval_data"]]) == 0))
+
         # reload
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
         if checkpoint_path:

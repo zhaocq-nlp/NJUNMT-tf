@@ -16,7 +16,7 @@ train:
   batch_size: 4
   batch_tokens_size: 128
   save_checkpoint_steps: 100
-  train_steps: 300
+  train_steps: 200
   eval_steps: 10
   maximum_features_length: 50
   maximum_labels_length: 50

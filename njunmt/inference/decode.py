@@ -233,7 +233,8 @@ def infer(
     sources = []
     cnt = 0
     for data in infer_data:
-        source_tokens = [vocab_source.convert_to_wordlist(x, bpe_decoding=False)
+        source_tokens = [vocab_source.convert_to_wordlist(
+            x, bpe_decoding=False, reverse_seq=False)
                          for x in data["feature_ids"]]
         x_str = [delimiter.join(x) for x in source_tokens]
         prediction, att = _infer(sess, data["feed_dict"], prediction_op,

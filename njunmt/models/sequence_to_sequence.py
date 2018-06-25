@@ -149,7 +149,6 @@ class SequenceToSequence(Configurable):
             "modality.source.params": {},  # Arbitrary parameters for the modality
             "modality.target.params": {},  # Arbitrary parameters for the modality
             "modality.params": {},  # Arbitrary parameters for the modality
-            "source.reverse": False,
             "inference.beam_size": 10,
             "inference.maximum_labels_length": 150,
             "inference.length_penalty": -1.0,
@@ -289,12 +288,6 @@ class SequenceToSequence(Configurable):
         """
         feature_ids = input_fields[Constants.FEATURE_IDS_NAME]
         feature_length = input_fields[Constants.FEATURE_LENGTH_NAME]
-
-        if self.params["source.reverse"]:
-            feature_ids = tf.reverse_sequence(
-                input=feature_ids,
-                seq_lengths=feature_length,
-                batch_axis=0, seq_axis=1)
         features = self._input_to_embedding_fn(feature_ids)
         encoder_output = self._encoder.encode(features, feature_length)
         return encoder_output

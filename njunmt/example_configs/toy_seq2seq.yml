@@ -10,7 +10,6 @@ model_params:
     dropout_logit_keep_prob: 1.0
     loss: crossentropy_t
     timing:
-  source.reverse: false
   initializer: random_uniform
   encoder.class: njunmt.encoders.BiUnidirectionalRNNEncoder
   encoder.params:

@@ -194,8 +194,14 @@ class LossMetricSpec(TextMetricSpec):
             batch_tokens_size=None,
             shuffle_every_epoch=None,
             bucketing=True)
-        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.EVAL, vocab_source=self._dataset.vocab_source,
-                                  vocab_target=self._dataset.vocab_target, name=self._model_name, reuse=True, verbose=False)
+        estimator_spec = model_fn(
+            model_configs=self._model_configs,
+            mode=ModeKeys.EVAL,
+            vocab_source=self._dataset.vocab_source,
+            vocab_target=self._dataset.vocab_target,
+            name=self._model_name,
+            reuse=True,
+            verbose=False)
         self._eval_feeding_data = text_inputter.make_feeding_data(
             input_fields=estimator_spec.input_fields, in_memory=True)
         self._loss_op = estimator_spec.loss
@@ -210,8 +216,7 @@ class LossMetricSpec(TextMetricSpec):
             self._start_decay_at = self._model_configs["optimizer_params"]["optimizer.lr_decay"]["start_decay_at"]
             assert self._start_decay_at >= self._start_at, (
                 "start_decay_at in optimizer.lr_decay should be no less than start_at in LossMetricSpec.")
-            div_factor = lr_tensor_dict[Constants.LR_ANNEAL_DIV_FACTOR_NAME]
-            self._half_lr_op = div_factor.assign(div_factor * 2.)
+            self._half_lr_op = lr_tensor_dict[Constants.LR_AUTO_HALF_OP_NAME]
             self._bad_count = 0
             self._min_loss = 10000.
 
@@ -331,8 +336,10 @@ class BleuMetricSpec(TextMetricSpec):
             beam_size=self._beam_size,
             maximum_labels_length=self._maximum_labels_length,
             length_penalty=self._length_penalty)
-        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.INFER, vocab_source=self._dataset.vocab_source,
-                                  vocab_target=self._dataset.vocab_target, name=self._model_name, reuse=True, verbose=False)
+        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.INFER,
+                                  vocab_source=self._dataset.vocab_source,
+                                  vocab_target=self._dataset.vocab_target, name=self._model_name, reuse=True,
+                                  verbose=False)
         self._predict_ops = estimator_spec.predictions
         text_inputter = TextLineInputter(
             data_files=self._dataset.features_file,

@@ -62,7 +62,7 @@ def loss_decay(learning_rate, global_step, decay_steps, decay_rate,
         raise ValueError("\"patience\" should be provided when using loss_decay")
     with tf.name_scope(name, "LossDecay", [learning_rate]):
         div_factor = tf.get_variable(
-            name=Constants.LR_ANNEAL_DIV_FACTOR_NAME,
+            name="learning_rate_anneal_div_factor",
             shape=(), dtype=tf.float32,
             initializer=tf.constant_initializer(
                 value=1., dtype=tf.float32),
@@ -70,7 +70,7 @@ def loss_decay(learning_rate, global_step, decay_steps, decay_rate,
         learning_rate = tf.convert_to_tensor(learning_rate, name=learning_rate)
 
         return (tf.div(learning_rate, div_factor),
-                {Constants.LR_ANNEAL_DIV_FACTOR_NAME: div_factor})
+                {Constants.LR_AUTO_HALF_OP_NAME: div_factor.assign(div_factor * 2.)})
 
 
 def noam_decay(learning_rate, global_step, decay_steps, decay_rate,
