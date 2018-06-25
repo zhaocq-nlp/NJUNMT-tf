@@ -435,21 +435,28 @@ class BleuMetricSpec(TextMetricSpec):
                        os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME),
                        global_step=global_step)
         if len(self._best_checkpoint_names) == 0 or bleu > self._best_checkpoint_bleus[0]:
-            tarname = "{}{}.tar.gz".format(Constants.CKPT_TGZ_FILENAME_PREFIX, global_step)
-            os.system("tar -zcvf {tarname} {checkpoint} {model_config} {model_analysis} {ckptdir}/*{global_step}*"
-                      .format(tarname=tarname,
-                              checkpoint=os.path.join(self._checkpoint_dir, "checkpoint"),
-                              model_config=os.path.join(self._checkpoint_dir, Constants.MODEL_CONFIG_YAML_FILENAME),
-                              model_analysis=os.path.join(self._checkpoint_dir, Constants.MODEL_ANALYSIS_FILENAME),
-                              ckptdir=self._checkpoint_dir,
-                              global_step=global_step))
+            backup_dirname = "{dirname_prefix}_iter{global_step}_bleu{bleu}".format(
+                dirname_prefix=Constants.BACKUP_MODEL_DIRNAME_PREFIX,
+                global_step=global_step,
+                bleu=bleu)
+            tf.logging.info("Saving to directoruy: {}/".format(backup_dirname))
+            os.system("mkdir {backup_dirname};"
+                      "cp {ckpt_dirname}/checkpoint {backup_dirname}/;"
+                      "cp {ckpt_dirname}/{model_config} {backup_dirname}/;"
+                      "cp {ckpt_dirname}/{model_analysis} {backup_dirname}/;"
+                      "cp {ckpt_dirname}/*{global_step}* {backup_dirname}/".format(
+                backup_dirname=backup_dirname,
+                ckpt_dirname=self._checkpoint_dir,
+                model_config=Constants.MODEL_CONFIG_YAML_FILENAME,
+                model_analysis=Constants.MODEL_ANALYSIS_FILENAME,
+                global_step=global_step))
             self._best_checkpoint_bleus.append(bleu)
-            self._best_checkpoint_names.append(tarname)
+            self._best_checkpoint_names.append(backup_dirname)
             if len(self._best_checkpoint_bleus) > self._maximum_keep_models:
                 tidx = numpy.argsort(self._best_checkpoint_bleus)
                 _bleus = [self._best_checkpoint_bleus[i] for i in tidx]
                 _names = [self._best_checkpoint_names[i] for i in tidx]
                 self._best_checkpoint_bleus = _bleus[1:]
                 self._best_checkpoint_names = _names[1:]
-                os.system("rm {}".format(_names[0]))
+                os.system("rm -rf {}".format(_names[0]))
             self._write_ckpt_bleulog()

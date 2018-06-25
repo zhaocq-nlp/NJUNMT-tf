@@ -43,8 +43,8 @@ class Constants:
     # for BLEU metric temp reference filename (capable for bpe)
     TMP_REFERENCE_FILENAME = "reference"
 
-    # for DevBLEUHelper checkpoint tgz filename prefix
-    CKPT_TGZ_FILENAME_PREFIX = "checkpoint.iter"
+    # for BleuMetricSpec
+    BACKUP_MODEL_DIRNAME_PREFIX = "models"
 
     # for runner, model analysis filename
     MODEL_ANALYSIS_FILENAME = "model_analysis.txt"
@@ -61,7 +61,8 @@ class Constants:
     LR_AUTO_HALF_OP_NAME = "lr_auto_half_op"
 
     # training loss display name
-    TRAIN_LOSS_KEY_NAME = "training/loss"
+    DISPLAY_TRAIN_TOP_NAME = "training"
+    TRAIN_LOSS_KEY_NAME = DISPLAY_TRAIN_TOP_NAME + "/loss"
     # collection name for key strs for tensors to be displayed
     DISPLAY_KEY_COLLECTION_NAME = "display_tensors_key"
     DISPLAY_VALUE_COLLECTION_NAME = "display_tensors_value"

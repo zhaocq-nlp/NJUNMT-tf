@@ -3,9 +3,8 @@ export CUDA_VISIBLE_DEVICES=
 
 python -m bin.train \
   --problem_name "heheda" \
-  --model_dir "models_target_r2l" \
+  --model_dir "test_models" \
   --train "
-        labels_r2l: true
         update_cycle: 1" \
   --config_paths "
         ./njunmt/example_configs/toy_seq2seq.yml,
