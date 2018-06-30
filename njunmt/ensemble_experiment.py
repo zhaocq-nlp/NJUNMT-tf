@@ -16,7 +16,8 @@ import time
 
 import tensorflow as tf
 
-from njunmt.data.text_inputter import TextLineInputter
+from njunmt.data.text_inputter_bak import TextLineInputter
+from njunmt.data.data_reader import LineReader
 from njunmt.data.vocab import Vocab
 from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn_ensemble
@@ -88,9 +89,11 @@ class EnsembleExperiment(Experiment):
         predict_op = estimator_spec.predictions
         sess = self._build_default_session()
         text_inputter = TextLineInputter(
-            data_files=[p["features_file"] for p
-                                in self._model_configs["infer_data"]],
-            vocab=vocab_source,
+            line_readers=[LineReader(
+                data=p["features_file"],
+                preprocessing_fn=lambda x: vocab_source.convert_to_idlist(x)) for p in
+                          self._model_configs["infer_data"]],
+            padding_id=vocab_source.pad_id,
             batch_size=self._model_configs["infer"]["batch_size"])
         sess.run(tf.global_variables_initializer())
         tf.logging.info("Start inference.")

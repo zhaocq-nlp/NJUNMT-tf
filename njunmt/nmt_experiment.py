@@ -397,10 +397,12 @@ class EvalExperiment(Experiment):
             tf.logging.info("Evaluation Source File: {}.".format(data_param["features_file"]))
             tf.logging.info("Evaluation Target File: {}.".format(data_param["labels_file"]))
             eval_data = ParallelTextInputter(
-                Dataset(features_file=data_param["features_file"],
-                        labels_file=data_param["labels_file"],
-                        vocab_source=vocab_source,
-                        vocab_target=vocab_target),
+                LineReader(data=data_param["features_file"],
+                           preprocessing_fn=lambda x: vocab_source.convert_to_idlist(x)),
+                LineReader(data=data_param["labels_file"],
+                           preprocessing_fn=lambda x: vocab_target.convert_to_idlist(x)),
+                vocab_source.pad_id,
+                vocab_target.pad_id,
                 batch_size=self._model_configs["eval"]["batch_size"],
                 bucketing=False).make_feeding_data(
                 input_fields=estimator_spec.input_fields, in_memory=True)

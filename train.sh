@@ -2,7 +2,6 @@ export CUDA_VISIBLE_DEVICES=
 
 
 python -m bin.train \
-  --problem_name "heheda" \
   --model_dir "test_models" \
   --train "
         shuffle_every_epoch: hehe

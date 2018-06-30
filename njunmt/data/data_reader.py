@@ -103,7 +103,7 @@ class LineReader(object):
 
         Returns: "" if it hits the end of this data;
                 None if this sample does not meet the requirement of `maximum_length`;
-                A list of token ids otherwise.
+                A list of tokens, otherwise.
         """
         if self._filename is None:  # from a list of data
             line = "" if self._data_index >= len(self._data) \

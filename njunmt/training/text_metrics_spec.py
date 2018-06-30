@@ -28,8 +28,9 @@ import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.training import saver as saver_lib
 
-from njunmt.data.text_inputter import ParallelTextInputter
-from njunmt.data.text_inputter import TextLineInputter
+from njunmt.data.text_inputter_bak import ParallelTextInputter
+from njunmt.data.text_inputter_bak import TextLineInputter
+from njunmt.data.data_reader import LineReader
 from njunmt.inference.decode import evaluate
 from njunmt.inference.decode import infer
 from njunmt.models.model_builder import model_fn
@@ -83,7 +84,7 @@ class TextMetricSpec(tf.train.SessionRunHook):
 
         Args:
             model_configs: A dictionary of all configurations.
-            dataset: A `Dataset` object.
+            dataset: A dict.
             start_at: A python integer, start to evaluate model at this step.
             eval_steps: A python integer, evaluate model every N steps.
             do_summary: Whether to save summaries.
@@ -188,8 +189,17 @@ class LossMetricSpec(TextMetricSpec):
         Furthermore, if the decay_type of optimizer is "loss_decay", creates
         the controller variables/operations.
         """
+        features_file = self._dataset["features_file"]
+        labels_file = self._dataset["labels_file"]
+        vocab_source = self._dataset["vocab_source"]
+        vocab_target = self._dataset["vocab_target"]
         text_inputter = ParallelTextInputter(
-            dataset=self._dataset,
+            LineReader(data=features_file,
+                       preprocessing_fn=lambda x: vocab_source.convert_to_idlist(x)),
+            LineReader(data=labels_file,
+                       preprocessing_fn=lambda x: vocab_target.convert_to_idlist(x)),
+            vocab_source.pad_id,
+            vocab_target.pad_id,
             batch_size=self._batch_size,
             batch_tokens_size=None,
             shuffle_every_epoch=None,
@@ -197,8 +207,8 @@ class LossMetricSpec(TextMetricSpec):
         estimator_spec = model_fn(
             model_configs=self._model_configs,
             mode=ModeKeys.EVAL,
-            vocab_source=self._dataset.vocab_source,
-            vocab_target=self._dataset.vocab_target,
+            vocab_source=vocab_source,
+            vocab_target=vocab_target,
             name=self._model_name,
             reuse=True,
             verbose=False)
@@ -273,7 +283,7 @@ class BleuMetricSpec(TextMetricSpec):
 
         Args:
             model_configs: A dictionary of all configurations.
-            dataset: A `Dataset` object.
+            dataset: A dict.
             start_at: A python integer, start to evaluate model at this step.
             eval_steps: A python integer, evaluate model every N steps.
             batch_size: A python integer, the batch size for each inference step.
@@ -331,19 +341,27 @@ class BleuMetricSpec(TextMetricSpec):
         Builds the model with reuse=True, mode=EVAL and preprocesses
         data file(s).
         """
+        features_file = self._dataset["features_file"]
+        labels_file = self._dataset["labels_file"]
+        vocab_source = self._dataset["vocab_source"]
+        vocab_target = self._dataset["vocab_target"]
         self._model_configs = update_infer_params(  # update inference parameters
             self._model_configs,
             beam_size=self._beam_size,
             maximum_labels_length=self._maximum_labels_length,
             length_penalty=self._length_penalty)
-        estimator_spec = model_fn(model_configs=self._model_configs, mode=ModeKeys.INFER,
-                                  vocab_source=self._dataset.vocab_source,
-                                  vocab_target=self._dataset.vocab_target, name=self._model_name, reuse=True,
+        estimator_spec = model_fn(model_configs=self._model_configs,
+                                  mode=ModeKeys.INFER,
+                                  vocab_source=vocab_source,
+                                  vocab_target=vocab_target,
+                                  name=self._model_name, reuse=True,
                                   verbose=False)
         self._predict_ops = estimator_spec.predictions
         text_inputter = TextLineInputter(
-            data_files=self._dataset.features_file,
-            vocab=self._dataset.vocab_source,
+            line_readers=LineReader(
+                data=features_file,
+                preprocessing_fn=lambda x: vocab_source.convert_to_idlist(x)),
+            padding_id=vocab_source.pad_id,
             batch_size=self._batch_size)
         self._infer_data = text_inputter.make_feeding_data(
             input_fields=estimator_spec.input_fields)
@@ -354,14 +372,14 @@ class BleuMetricSpec(TextMetricSpec):
         self._read_ckpt_bleulog()
         # load references
         self._references = []
-        for rfile in access_multiple_files(self._dataset.labels_file):
+        for rfile in access_multiple_files(labels_file):
             with open_file(rfile) as fp:
                 if self._char_level:
                     self._references.append(to_chinese_char(fp.readlines()))
                 else:
                     self._references.append(fp.readlines())
         self._references = list(map(list, zip(*self._references)))
-        with open_file(self._dataset.features_file) as fp:
+        with open_file(features_file) as fp:
             self._sources = fp.readlines()
         self._bad_count = 0
         self._best_bleu_score = 0.
@@ -380,8 +398,8 @@ class BleuMetricSpec(TextMetricSpec):
             prediction_op=self._predict_ops,
             infer_data=self._infer_data,
             output=output_prediction_file,
-            vocab_target=self._dataset.vocab_target,
-            vocab_source=self._dataset.vocab_source,
+            vocab_target=self._dataset["vocab_target"],
+            vocab_source=self._dataset["vocab_source"],
             delimiter=self._delimiter,
             output_attention=False,
             tokenize_output=self._char_level,
