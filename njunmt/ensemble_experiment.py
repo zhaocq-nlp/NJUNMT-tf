@@ -16,7 +16,7 @@ import time
 
 import tensorflow as tf
 
-from njunmt.data.text_inputter_bak import TextLineInputter
+from njunmt.data.text_inputter import TextLineInputter
 from njunmt.data.data_reader import LineReader
 from njunmt.data.vocab import Vocab
 from njunmt.inference.decode import infer

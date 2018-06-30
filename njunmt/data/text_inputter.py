@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Classes for reading in data and preparing for feeding. """
+""" Classes for reading in data. """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,11 +22,9 @@ import numpy
 import six
 import tensorflow as tf
 
+from njunmt.data.data_reader import LineReader
 from njunmt.utils.constants import Constants
 from njunmt.utils.constants import concat_name
-from njunmt.utils.misc import access_multiple_files
-from njunmt.utils.misc import open_file, close_file
-from njunmt.utils.misc import shuffle_data
 from njunmt.utils.misc import padding_batch_data
 from njunmt.utils.expert_utils import repeat_n_times
 
@@ -137,54 +135,51 @@ class TextLineInputter(TextInputter):
     """ Class for reading in lines.  """
 
     def __init__(self,
-                 data_files,
-                 vocab,
-                 batch_size,
-                 maximum_length=None):
+                 line_readers,
+                 padding_id,
+                 batch_size):
         """ Initializes the parameters for this inputter.
 
         Args:
-            filename: A string or a list of string.
-            vocab: A `Vocab`.
+            line_readers: A LineReader instance or a list of LineReader instances.
+            padding_id: An integer for padding.
             batch_size: An integer value indicating the number of
               sentences passed into one step. Sentences will be padded by EOS.
-            maximum_length: An integer, the maximum length of the sequence (after encoded).
 
         Raises:
-            ValueError: if `batch_size` is None, or if `filename` not exists.
+            ValueError: if `batch_size` is None.
         """
         super(TextLineInputter, self).__init__()
-        self._data_files = data_files
+        self._readers = line_readers
         self._batch_size = batch_size
-        self._maximum_length = maximum_length
         if self._batch_size is None:
             raise ValueError("batch_size should be provided.")
-        self._preprocessing_fn = lambda x: vocab.convert_to_idlist(x)
-        self._padding = vocab.pad_id
+        self._padding_id = padding_id
 
     def _make_feeding_data_from(self,
-                                filename,
+                                reader,
                                 input_fields,
                                 name_prefix):
         """ Processes the data file and return an iterable instance for loop.
 
         Args:
-            filename: A specific data file.
+            reader: A LineReader instance.
             input_fields: A dict of placeholders.
             name_prefix: A string, the key name prefix for feed_dict.
 
         Returns: An iterable instance that packs feeding dictionary
                    for `tf.Session().run` according to the `filename`.
         """
-        features = open_file(filename, encoding="utf-8")
+        assert isinstance(reader, LineReader)
         ss_buf = []
         while True:
-            encoded_ss = read_line_with_filter(
-                features, self._maximum_length, self._preprocessing_fn)
+            encoded_ss = reader.next()
             if encoded_ss == "":
                 break
+            if encoded_ss is None:
+                continue
             ss_buf.append(encoded_ss)
-        close_file(features)
+        reader.close()
         data = []
         batch_data_idx = 0
 
@@ -192,7 +187,7 @@ class TextLineInputter(TextInputter):
             data.append(pack_feed_dict(
                 name_prefixs=name_prefix,
                 origin_datas=ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
-                paddings=self._padding,
+                paddings=self._padding_id,
                 input_fields=input_fields))
             batch_data_idx += self._batch_size
         return data
@@ -210,22 +205,22 @@ class TextLineInputter(TextInputter):
                    instances according to the `data_field_name`
                    in the constructor.
         """
-        if isinstance(self._data_files, list):
+        if isinstance(self._readers, list):
             return [self._make_feeding_data_from(
-                filename, input_fields, name_prefix)
-                    for filename in self._data_files]
-        assert isinstance(self._data_files, six.string_types)
+                reader, input_fields, name_prefix)
+                    for reader in self._readers]
         return self._make_feeding_data_from(
-            self._data_files, input_fields, name_prefix)
+            self._readers, input_fields, name_prefix)
 
 
 class ParallelTextInputter(TextInputter):
     """ Class for reading in parallel texts.  """
 
     def __init__(self,
-                 dataset,
-                 maximum_features_length=None,
-                 maximum_labels_length=None,
+                 features_reader,
+                 labels_reader,
+                 features_padding_id,
+                 labels_padding_id,
                  batch_size=None,
                  batch_tokens_size=None,
                  shuffle_every_epoch=None,
@@ -234,13 +229,10 @@ class ParallelTextInputter(TextInputter):
         """ Initializes the parameters for this inputter.
 
         Args:
-            dataset: A `Dataset` object.
-            maximum_features_length: The maximum length of symbols (especially
-              after BPE is applied). If provided, the number of symbols of
-              one sentence exceeding this value will be ignore.
-            maximum_labels_length: The maximum length of symbols (especially
-              after BPE is applied). If provided, the number of symbols of
-              one sentence exceeding this value will be ignore.
+            features_reader: A LineReader instance for features.
+            labels_reader: A LineReader instance for labels.
+            features_padding_id: An integer for features padding.
+            labels_padding_id: An integer for labels padding.
             batch_size: An integer value indicating the number of
               sentences passed into one step. Sentences will be padded by EOS.
             batch_tokens_size: An integer value indicating the number of
@@ -258,14 +250,14 @@ class ParallelTextInputter(TextInputter):
 
         """
         super(ParallelTextInputter, self).__init__()
-        self._maximum_features_length = maximum_features_length
-        self._maximum_labels_length = maximum_labels_length
+        self._features_reader = features_reader
+        self._labels_reader = labels_reader
+        self._features_padding_id = features_padding_id
+        self._labels_padding_id = labels_padding_id
         self._batch_size = batch_size
         self._batch_tokens_size = batch_tokens_size
         self._shuffle_every_epoch = shuffle_every_epoch
         self._fill_full_batch = fill_full_batch
-        self._features_file = access_multiple_files(dataset.features_file)[0]
-        self._labels_file = access_multiple_files(dataset.labels_file)[0]
         self._bucketing = bucketing
         if self._batch_size is None and self._batch_tokens_size is None:
             raise ValueError("Either batch_size or batch_tokens_size should be provided.")
@@ -278,10 +270,6 @@ class ParallelTextInputter(TextInputter):
             self._cache_size = self._batch_tokens_size * 6  # 4096 * 6 := 25000
             if batch_size is None:
                 self._batch_size = 32
-        self._features_preprocessing_fn = lambda x: dataset.vocab_source.convert_to_idlist(x)
-        self._labels_preprocessing_fn = lambda x: dataset.vocab_target.convert_to_idlist(x)
-        self._features_padding = dataset.vocab_source.pad_id
-        self._labels_padding = dataset.vocab_target.pad_id
 
     def _small_parallel_data(self, input_fields):
         """ Function for reading small scale parallel data for evaluation.
@@ -291,22 +279,19 @@ class ParallelTextInputter(TextInputter):
 
         Returns: A list of feeding data.
         """
-        features = open_file(self._features_file, encoding="utf-8")
-        labels = open_file(self._labels_file, encoding="utf-8")
-
         ss_buf = []
         tt_buf = []
         while True:
-            ss = read_line_with_filter(features, self._maximum_features_length,
-                                       self._features_preprocessing_fn)
-            tt = read_line_with_filter(labels, self._maximum_labels_length,
-                                       self._labels_preprocessing_fn)
+            ss = self._features_reader.next()
+            tt = self._labels_reader.next()
             if ss == "" or tt == "":
                 break
+            if ss is None or tt is None:
+                continue
             ss_buf.append(ss)
             tt_buf.append(tt)
-        close_file(features)
-        close_file(labels)
+        self._features_reader.close()
+        self._labels_reader.close()
         if self._bucketing:
             tt_buf, ss_buf = do_bucketing(tt_buf, ss_buf)
             ss_buf = ss_buf[0]
@@ -318,7 +303,7 @@ class ParallelTextInputter(TextInputter):
                     name_prefixs=[Constants.FEATURE_NAME_PREFIX, Constants.LABEL_NAME_PREFIX],
                     origin_datas=[ss_buf[batch_data_idx: batch_data_idx + self._batch_size],
                                   tt_buf[batch_data_idx: batch_data_idx + self._batch_size]],
-                    paddings=[self._features_padding, self._labels_padding],
+                    paddings=[self._features_padding_id, self._labels_padding_id],
                     input_fields=input_fields))
             batch_data_idx += self._batch_size
         return data
@@ -363,7 +348,8 @@ class ParallelTextInputter(TextInputter):
             for k, v in kwargs.items():
                 setattr(self, k, v)
 
-            self._features, self._labels = self._shuffle_and_reopen()
+            self._reset()
+
             self._features_buffer = []
             self._labels_buffer = []
             self._features_len_buffer = []
@@ -375,7 +361,18 @@ class ParallelTextInputter(TextInputter):
             return self
 
         def _reset(self):
-            self._features, self._labels = self._shuffle_and_reopen()
+            """ shuffle features & labels file. """
+            if not hasattr(self, "_shuffled_features_file"):
+                self._shuffled_features_file = "features_file." + str(self._shuffle_every_epoch)
+                self._shuffled_labels_file = "labels_file." + str(self._shuffle_every_epoch)
+            argsort_index = self._features_reader.reset(
+                do_shuffle=self._shuffle_every_epoch,
+                shuffle_to_file=self._shuffled_features_file,
+                argsort_index=None)
+            _ = self._labels_reader.reset(
+                do_shuffle=self._shuffle_every_epoch,
+                shuffle_to_file=self._shuffled_labels_file,
+                argsort_index=argsort_index)
 
         def __next__(self):
             """ capable for python3 """
@@ -391,10 +388,8 @@ class ParallelTextInputter(TextInputter):
             if len(self._features_buffer) < self._batch_size:
                 cnt = len(self._features_buffer)
                 while cnt < self._cache_size:
-                    ss = read_line_with_filter(self._features, self._maximum_features_length,
-                                               self._features_preprocessing_fn)
-                    tt = read_line_with_filter(self._labels, self._maximum_labels_length,
-                                               self._labels_preprocessing_fn)
+                    ss = self._features_reader.next()
+                    tt = self._labels_reader.next()
                     if ss == "" or tt == "":
                         break
                     if ss is None or tt is None:
@@ -450,33 +445,8 @@ class ParallelTextInputter(TextInputter):
             ret_data = pack_feed_dict(
                 name_prefixs=[Constants.FEATURE_NAME_PREFIX, Constants.LABEL_NAME_PREFIX],
                 origin_datas=[features, labels],
-                paddings=[self._features_padding, self._labels_padding],
+                paddings=[self._features_padding_id, self._labels_padding_id],
                 input_fields=self._input_fields)
             if self._fill_full_batch:
                 ret_data["feed_dict"].pop("parallels")
             return ret_data
-
-        def _shuffle_and_reopen(self):
-            """ shuffle features & labels file. """
-            if self._shuffle_every_epoch:
-                if not hasattr(self, "_shuffled_features_file"):
-                    self._shuffled_features_file = self._features_file.strip().split("/")[-1] \
-                                                   + "." + self._shuffle_every_epoch
-                    self._shuffled_labels_file = self._labels_file.strip().split("/")[-1] \
-                                                 + "." + self._shuffle_every_epoch
-
-                tf.logging.info("shuffling data\n\t{} ==> {}\n\t{} ==> {}"
-                                .format(self._features_file, self._shuffled_features_file,
-                                        self._labels_file, self._shuffled_labels_file))
-                shuffle_data([self._features_file, self._labels_file],
-                             [self._shuffled_features_file, self._shuffled_labels_file])
-                self._features_file = self._shuffled_features_file
-                self._labels_file = self._shuffled_labels_file
-                if hasattr(self, "_features"):
-                    close_file(self._features)
-                    close_file(self._labels)
-            elif hasattr(self, "_features"):
-                self._features.seek(0)
-                self._labels.seek(0)
-                return self._features, self._labels
-            return open_file(self._features_file), open_file(self._labels_file)

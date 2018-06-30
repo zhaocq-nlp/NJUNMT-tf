@@ -19,8 +19,8 @@ import six
 import tensorflow as tf
 
 from njunmt.data.data_reader import LineReader
-from njunmt.data.text_inputter_bak import ParallelTextInputter
-from njunmt.data.text_inputter_bak import TextLineInputter
+from njunmt.data.text_inputter import ParallelTextInputter
+from njunmt.data.text_inputter import TextLineInputter
 from njunmt.data.vocab import Vocab
 from njunmt.inference.decode import evaluate_with_attention
 from njunmt.inference.decode import infer

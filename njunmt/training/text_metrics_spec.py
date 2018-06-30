@@ -28,8 +28,8 @@ import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.training import saver as saver_lib
 
-from njunmt.data.text_inputter_bak import ParallelTextInputter
-from njunmt.data.text_inputter_bak import TextLineInputter
+from njunmt.data.text_inputter import ParallelTextInputter
+from njunmt.data.text_inputter import TextLineInputter
 from njunmt.data.data_reader import LineReader
 from njunmt.inference.decode import evaluate
 from njunmt.inference.decode import infer
@@ -456,7 +456,7 @@ class BleuMetricSpec(TextMetricSpec):
             backup_dirname = "{dirname_prefix}_iter{global_step}_bleu{bleu}".format(
                 dirname_prefix=Constants.BACKUP_MODEL_DIRNAME_PREFIX,
                 global_step=global_step,
-                bleu=bleu)
+                bleu=("%.1f" % bleu))
             tf.logging.info("Saving to directoruy: {}/".format(backup_dirname))
             os.system("mkdir {backup_dirname};"
                       "cp {ckpt_dirname}/checkpoint {backup_dirname}/;"
