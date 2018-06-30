@@ -23,23 +23,23 @@ train:
   shuffle_every_epoch:
 
 # training hooks for debugging (small values)
-metrics:
-  - class: LossMetricSpec
-    params:
-      start_at: 0
-      eval_steps: 50
-      batch_size: 128
-
-  - class: BleuMetricSpec
-    params:
-      start_at: 0
-      eval_steps: 100
-      batch_size: 64
-      beam_size: 5
-      maximum_labels_length: 20
-      delimiter: " "
-      char_level: false
-      maximum_keep_models: 5
+#metrics:
+#  - class: LossMetricSpec
+#    params:
+#      start_at: 0
+#      eval_steps: 50
+#      batch_size: 128
+#
+#  - class: BleuMetricSpec
+#    params:
+#      start_at: 0
+#      eval_steps: 100
+#      batch_size: 64
+#      beam_size: 5
+#      maximum_labels_length: 20
+#      delimiter: " "
+#      char_level: false
+#      maximum_keep_models: 5
 
 
 

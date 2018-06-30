@@ -18,9 +18,9 @@ from abc import ABCMeta, abstractmethod
 import six
 import tensorflow as tf
 
-from njunmt.data.dataset import Dataset
-from njunmt.data.text_inputter import ParallelTextInputter
-from njunmt.data.text_inputter import TextLineInputter
+from njunmt.data.data_reader import LineReader
+from njunmt.data.text_inputter_bak import ParallelTextInputter
+from njunmt.data.text_inputter_bak import TextLineInputter
 from njunmt.data.vocab import Vocab
 from njunmt.inference.decode import evaluate_with_attention
 from njunmt.inference.decode import infer
@@ -126,18 +126,11 @@ class TrainingExperiment(Experiment):
             filename=self._model_configs["data"]["target_words_vocabulary"],
             bpe_codes=self._model_configs["data"]["target_bpecodes"],
             reverse_seq=self._model_configs["train"]["labels_r2l"])
-        # build dataset
-        train_dataset = Dataset(
-            vocab_source=vocab_source,
-            vocab_target=vocab_target,
-            features_file=self._model_configs["data"]["train_features_file"],
-            labels_file=self._model_configs["data"]["train_labels_file"])
-
-        eval_dataset = Dataset(
-            vocab_source=vocab_source,
-            vocab_target=vocab_target,
-            features_file=self._model_configs["data"]["eval_features_file"],
-            labels_file=self._model_configs["data"]["eval_labels_file"])
+        eval_dataset = {
+            "vocab_source": vocab_source,
+            "vocab_target": vocab_target,
+            "features_file": self._model_configs["data"]["eval_features_file"],
+            "labels_file": self._model_configs["data"]["eval_labels_file"]}
 
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -163,9 +156,14 @@ class TrainingExperiment(Experiment):
                                         model_name=estimator_spec.name)))
 
         train_text_inputter = ParallelTextInputter(
-            train_dataset,
-            maximum_features_length=self._model_configs["train"]["maximum_features_length"],
-            maximum_labels_length=self._model_configs["train"]["maximum_labels_length"],
+            LineReader(data=self._model_configs["data"]["train_features_file"],
+                       maximum_length=self._model_configs["train"]["maximum_features_length"],
+                       preprocessing_fn=lambda x: vocab_source.convert_to_idlist(x)),
+            LineReader(data=self._model_configs["data"]["train_labels_file"],
+                       maximum_length=self._model_configs["train"]["maximum_labels_length"],
+                       preprocessing_fn=lambda x: vocab_target.convert_to_idlist(x)),
+            vocab_source.pad_id,
+            vocab_target.pad_id,
             batch_size=self._model_configs["train"]["batch_size"],
             batch_tokens_size=self._model_configs["train"]["batch_tokens_size"],
             shuffle_every_epoch=self._model_configs["train"]["shuffle_every_epoch"],
@@ -257,12 +255,6 @@ class InferExperiment(Experiment):
             filename=self._model_configs["infer"]["target_words_vocabulary"],
             bpe_codes=self._model_configs["infer"]["target_bpecodes"],
             reverse_seq=self._model_configs["train"]["labels_r2l"])
-        # build dataset
-        dataset = Dataset(
-            vocab_source=vocab_source,
-            vocab_target=vocab_target,
-            features_file=[p["features_file"] for p
-                           in self._model_configs["infer_data"]])
 
         self._model_configs = update_infer_params(
             self._model_configs,
@@ -277,9 +269,11 @@ class InferExperiment(Experiment):
         sess = self._build_default_session()
 
         text_inputter = TextLineInputter(
-            data_files=[p["features_file"] for p
-                        in self._model_configs["infer_data"]],
-            vocab=vocab_source,
+            line_readers=[LineReader(
+                data=p["features_file"],
+                preprocessing_fn=lambda x: vocab_source.convert_to_idlist(x)) for p in
+                          self._model_configs["infer_data"]],
+            padding_id=vocab_source.pad_id,
             batch_size=self._model_configs["infer"]["batch_size"])
         # reload
         checkpoint_path = tf.train.latest_checkpoint(self._model_configs["model_dir"])
