@@ -32,6 +32,7 @@ from njunmt.utils.constants import Constants
 from njunmt.utils.constants import ModeKeys
 from njunmt.utils.beam_search import process_beam_predictions
 from njunmt.utils.misc import set_fflayers_layer_norm
+from njunmt.utils.misc import label_smoothing
 
 # import all bridges
 BRIDGE_CLSS = [
@@ -152,6 +153,7 @@ class SequenceToSequence(Configurable):
             "inference.beam_size": 10,
             "inference.maximum_labels_length": 150,
             "inference.length_penalty": -1.0,
+            "label_smoothing": 0.0,
             "initializer": "random_uniform"}
 
     def get_variable_initializer(self):
@@ -191,19 +193,35 @@ class SequenceToSequence(Configurable):
                 encoder_output, decoder_output, decoding_res, **input_fields)
         return final_outputs
 
-    def _compute_loss(self, logits, label_ids, label_length):
-        """ Computes loss via `target_modality`.
+    def _compute_loss(self, logits, targets, targets_length):
+        """ Computes loss.
 
         Args:
             logits: The logits Tensor with shape [timesteps, batch_size, target_vocab_size].
-            label_ids: The labels Tensor with shape [batch_size, timesteps].
-            label_length: The length of labels Tensor with shape [batch_size, ]
+            targets: The labels Tensor with shape [batch_size, timesteps].
+            targets_length: The length of labels Tensor with shape [batch_size, ]
 
         Returns: Loss sum and weight sum.
         """
-        with tf.variable_scope(self._target_modality.name):
-            return self._target_modality.loss(
-                logits=logits, label_ids=label_ids, label_length=label_length)
+        targets = tf.transpose(targets, [1, 0])  # [timesteps, batch_size]
+        if float(self.params["label_smoothing"]) > 0.:
+            soft_targets, normalizing = label_smoothing(
+                targets, logits.get_shape().as_list()[-1])
+            ces = tf.nn.softmax_cross_entropy_with_logits(
+                logits=logits, labels=soft_targets) - normalizing
+        else:
+            ces = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                logits=logits, labels=targets)
+        # [timesteps, batch]
+        ces_mask = tf.transpose(
+            tf.sequence_mask(
+                lengths=tf.to_int32(targets_length),
+                maxlen=tf.to_int32(tf.shape(targets)[0]),
+                dtype=tf.float32), [1, 0])
+        masked_ces = ces * ces_mask
+        loss_sum = tf.reduce_sum(masked_ces)
+        weight_sum = tf.to_float(tf.shape(targets_length)[0])
+        return loss_sum, weight_sum
 
     def _decode(self, encoder_output, input_fields):
         """ Builds helper and calls decoder's `decode` method.
@@ -357,8 +375,8 @@ class SequenceToSequence(Configurable):
         if self.mode == ModeKeys.TRAIN or self.mode == ModeKeys.EVAL:
             loss_sum, weight_sum = self._compute_loss(
                 logits=decoding_result,  # [timesteps, batch_size, dim]
-                label_ids=kwargs[Constants.LABEL_IDS_NAME],
-                label_length=kwargs[Constants.LABEL_LENGTH_NAME])
+                targets=kwargs[Constants.LABEL_IDS_NAME],
+                targets_length=kwargs[Constants.LABEL_LENGTH_NAME])
         if self.mode == ModeKeys.TRAIN:
             return loss_sum, weight_sum
 

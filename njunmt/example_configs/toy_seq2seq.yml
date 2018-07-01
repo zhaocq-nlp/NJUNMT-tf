@@ -8,7 +8,7 @@ model_params:
     multiply_embedding_mode:
     share_embedding_and_softmax_weights: false
     dropout_logit_keep_prob: 1.0
-    loss: crossentropy_t
+    loss: crossentropy
     timing:
   initializer: random_uniform
   encoder.class: njunmt.encoders.BiUnidirectionalRNNEncoder

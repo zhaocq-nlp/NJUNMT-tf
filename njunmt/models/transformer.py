@@ -89,8 +89,10 @@ class Transformer(SequenceToSequence):
         Returns: Loss on this batch of data, a tf.float32 scalar.
         """
         with tf.variable_scope(self._target_modality.name):
-            loss = self._target_modality.loss(
-                logits=logits, label_ids=label_ids, label_length=label_length)
+            #TODO
+            loss = 0.
+            # loss = self._target_modality.loss(
+            #    logits=logits, label_ids=label_ids, label_length=label_length)
         max_nonpadding_var = tf.get_variable(
             "max_nonpadding", shape=[],
             initializer=tf.ones_initializer(),

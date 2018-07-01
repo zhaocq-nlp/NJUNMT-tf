@@ -243,19 +243,3 @@ class Modality(Configurable):
         except ValueError:
             # perhaps there were no inputs, and this is a new variable.
             return self.bottom_simple(x, name, reuse=None, time=time)
-
-    def loss(self, logits, label_ids, label_length):
-        """ Computes loss.
-
-        Args:
-            logits: A logits Tensor with shape [timesteps, batch_size, vocab_size].
-            label_ids: The gold symbol ids, a Tensor with shape [batch_size, timesteps].
-            label_length: The true symbols lengths, a Tensor with shape [batch_size, ].
-
-        Returns: Loss sum and weight sum.
-        """
-        return getattr(loss_fns, self.params["loss"])(
-            logits=logits,
-            # transposed targets: [timesteps, batch_size]
-            targets=tf.transpose(label_ids, [1, 0]),
-            sequence_length=label_length)
