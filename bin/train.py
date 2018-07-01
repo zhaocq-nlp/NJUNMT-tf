@@ -28,7 +28,7 @@ TRAIN_ARGS = {
                                    Multiple files can be separated by commas. Files are merged recursively.
                                    Setting a key in these files is equivalent to
                                    setting the FLAG value with the same name."""],
-    "model_dir": ["string", "", """The path to save models. """],
+    "model_dir": ["string", "models", """The path to save models. """],
     "problem_name": ["string", "seq2seq", """The name for this run."""],
     "train": ["string", "", """A yaml-style string defining the training options."""],
     "data": ["string", "", """A yaml-style string defining the training data files,
@@ -36,7 +36,7 @@ TRAIN_ARGS = {
     "hooks": ["string", "", """A yaml-style string defining the training hooks (if implemented). """],
     "metrics": ["string", "", """A yaml-style string defining the evaluation metrics for training steps (if implemented),
                                 e.g. BLEU, crossentropy loss."""],
-    "model": ["string", "", """SequenceToSequence", "The model class name."""],
+    "model": ["string", """SequenceToSequence", "The model class name."""],
     "model_params": ["string", "", """A yaml-style string defining the model parameters."""],
     "optimizer_params": ["string", "", """A yaml-style string defining the parameters for optimizer."""]
 }

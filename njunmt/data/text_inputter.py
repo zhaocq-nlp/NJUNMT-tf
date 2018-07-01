@@ -29,31 +29,6 @@ from njunmt.utils.misc import padding_batch_data
 from njunmt.utils.expert_utils import repeat_n_times
 
 
-def read_line_with_filter(
-        fp,
-        maximum_length=None,
-        preprocessing_fn=None):
-    """ Reads one line from `fp`, filters by `filter_length` and
-      does preprocessing if provided.
-
-    Args:
-        fp: A file identifier.
-        maximum_length: An integer, the maximum length of one line.
-        preprocessing_fn: A callable function.
-
-    Returns: A list.
-    """
-    line = fp.readline()
-    if line == "":
-        return ""
-    tokens = line.strip()
-    if preprocessing_fn:
-        tokens = preprocessing_fn(tokens)
-    if maximum_length and len(tokens) > maximum_length:
-        return None
-    return tokens
-
-
 def do_bucketing(pivot, *args):
     """ Sorts the `pivot` and args by length of `pivot`.
 
