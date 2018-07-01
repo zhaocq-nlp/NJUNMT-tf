@@ -22,7 +22,7 @@ import tensorflow as tf
 
 import os
 import njunmt
-from njunmt.models import EnsembleModel
+from njunmt.models import *
 from njunmt.training.hooks import build_hooks
 from njunmt.training.optimize import OptimizerWrapper
 from njunmt.utils.configurable import ModelConfigs

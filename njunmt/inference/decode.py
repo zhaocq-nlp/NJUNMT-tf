@@ -149,9 +149,10 @@ def _infer(
     """
     parallels = feed_dict.pop("parallels")
     avail = sum(numpy.array(parallels) > 0)
-    extract_keys = ["sorted_hypothesis"]
+    extract_keys = ["sorted_hypothesis", "sorted_scores"]
     if output_attention:
-        assert top_k == 1
+        assert top_k == 1, (
+            "`output_attention` flag now only accepts `tok_k`=1.")
         extract_keys.extend(["sorted_argidx", "attentions", "beam_ids"])
     brief_pred_op = dict(zip(
         extract_keys,
@@ -167,7 +168,7 @@ def _infer(
                        predict_out["sorted_hypothesis"]))
     beam_size = total_samples // batch_size
 
-    def _post_process_hypo(pred, **kwargs):
+    def _post_process_hypo(pred, score, **kwargs):
         _num_samples = pred.shape[0]
         _batch_size = _num_samples // beam_size
         batch_beam_pos = numpy.tile(numpy.arange(_batch_size) * beam_size, [beam_size, 1]).transpose()
@@ -179,20 +180,22 @@ def _infer(
                 beam_ids=kwargs["beam_ids"],
                 attention_dict=kwargs["attentions"],
                 gather_idx=kwargs["sorted_argidx"][batch_beam_pos])
-            return pred[batch_beam_pos, :].tolist(), atts
+            return pred[batch_beam_pos, :].tolist(), score[batch_beam_pos], atts
         # [_batch * _beam, timesteps] => [_batch * top_k, timesteps]
-        return pred[batch_beam_pos, :].tolist(), []
+        return pred[batch_beam_pos, :].tolist(), score[batch_beam_pos], []
 
-    hypothesises, attentions = repeat_n_times(
+    hypothesises, scores, attentions = repeat_n_times(
         avail,
         _post_process_hypo,
         predict_out["sorted_hypothesis"],
+        predict_out["sorted_scores"],
         beam_ids=predict_out.get("beam_ids", None),
         attentions=predict_out.get("attentions", None),
         sorted_argidx=predict_out.get("sorted_argidx", None))
     hypothesis = sum(hypothesises, [])
+    score = numpy.concatenate(scores, axis=0)
     attention = sum(attentions, [])
-    return hypothesis, attention
+    return hypothesis, score, attention
 
 
 def infer(
@@ -230,6 +233,7 @@ def infer(
     """
     attentions = dict()
     hypothesis = []
+    scores = []
     sources = []
     cnt = 0
     for data in infer_data:
@@ -237,10 +241,16 @@ def infer(
             x, bpe_decoding=False, reverse_seq=False)
                          for x in data["feature_ids"]]
         x_str = [delimiter.join(x) for x in source_tokens]
-        prediction, att = _infer(sess, data["feed_dict"], prediction_op,
-                                 len(x_str), top_k=1, output_attention=output_attention)
+        prediction, score, att = _infer(
+            sess=sess,
+            feed_dict=data["feed_dict"],
+            prediction_op=prediction_op,
+            batch_size=len(x_str),
+            top_k=1,
+            output_attention=output_attention)
 
         sources.extend(x_str)
+        scores.append(score)
         hypothesis.extend([delimiter.join(vocab_target.convert_to_wordlist(prediction[sample_idx]))
                            for sample_idx in range(len(prediction))])
         if output_attention and att is not None:
@@ -260,4 +270,4 @@ def infer(
             fw.write("\n".join(hypothesis) + "\n")
     if output_attention:
         dump_attentions(output, attentions)
-    return sources, hypothesis
+    return sources, hypothesis, numpy.concatenate(scores, axis=0)

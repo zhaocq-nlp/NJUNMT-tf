@@ -213,6 +213,6 @@ def process_beam_predictions(decoding_result, beam_size, alpha):
     sorted_hypothesis = tf.gather(hypothesis, top_indices)
     decoding_result["sorted_hypothesis"] = sorted_hypothesis
     decoding_result["sorted_argidx"] = top_indices
-    decoding_result["sorted_scores"] = top_scores
+    decoding_result["sorted_scores"] = tf.reshape(top_scores, [-1])
     decoding_result["scores"] = scores_shaped
     return decoding_result

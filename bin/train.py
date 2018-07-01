@@ -36,7 +36,7 @@ TRAIN_ARGS = {
     "hooks": ["string", "", """A yaml-style string defining the training hooks (if implemented). """],
     "metrics": ["string", "", """A yaml-style string defining the evaluation metrics for training steps (if implemented),
                                 e.g. BLEU, crossentropy loss."""],
-    "model": ["string", """SequenceToSequence", "The model class name."""],
+    "model": ["string", "SequenceToSequence", """The model class name."""],
     "model_params": ["string", "", """A yaml-style string defining the model parameters."""],
     "optimizer_params": ["string", "", """A yaml-style string defining the parameters for optimizer."""]
 }

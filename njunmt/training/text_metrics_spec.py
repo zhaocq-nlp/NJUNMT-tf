@@ -393,7 +393,7 @@ class BleuMetricSpec(TextMetricSpec):
         """
         start_time = time.time()
         output_prediction_file = self._tmp_trans_file_prefix + str(global_step)
-        sources, hypothesis = infer(
+        sources, hypothesis, _ = infer(
             sess=run_context.session,
             prediction_op=self._predict_ops,
             infer_data=self._infer_data,
