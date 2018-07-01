@@ -56,16 +56,18 @@ def evaluate(sess, loss_op, eval_data):
 
     Returns: Total loss averaged by number of data samples.
     """
-    losses = 0.
-    weights = 0.
+    losses = []
+    weights = []
+    total_loss = 0.
+    total_weight = 0.
     for data in eval_data:
         parallels = data["feed_dict"].pop("parallels")
         avail = sum(numpy.array(parallels) > 0)
         loss = _evaluate(sess, data["feed_dict"], loss_op[:avail])
         data["feed_dict"]["parallels"] = parallels
-        losses += sum([_l[0] for _l in loss])
-        weights += sum([_l[1] for _l in loss])
-    loss = losses / weights
+        total_loss += sum([_l[0] for _l in loss])
+        total_weight += sum([_l[1] for _l in loss])
+    loss = total_loss / total_weight
     return loss
 
 
