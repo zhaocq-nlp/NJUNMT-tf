@@ -38,7 +38,7 @@ from njunmt.utils.misc import label_smoothing
 BRIDGE_CLSS = [
     x for x in bridges.__dict__.values()
     if inspect.isclass(x) and issubclass(x, bridges.Bridge)
-    ]
+]
 for bri in BRIDGE_CLSS:
     setattr(sys.modules[__name__], bri.__name__, bri)
 
@@ -78,6 +78,11 @@ class SequenceToSequence(Configurable):
         self._encoder = self._create_encoder()
         self._decoder = self._create_decoder()
         self._encoder_decoder_bridge = self._create_bridge()
+
+    def _check_parameters(self):
+        """ Forces some parameters. """
+        if self.mode != ModeKeys.TRAIN:
+            self.params["label_smoothing"] = 0.0
 
     @staticmethod
     def create_input_fields(mode):
@@ -193,13 +198,14 @@ class SequenceToSequence(Configurable):
                 encoder_output, decoder_output, decoding_res, **input_fields)
         return final_outputs
 
-    def _compute_loss(self, logits, targets, targets_length):
+    def _compute_loss(self, logits, targets, targets_length, return_as_scorer=False):
         """ Computes loss.
 
         Args:
             logits: The logits Tensor with shape [timesteps, batch_size, target_vocab_size].
             targets: The labels Tensor with shape [batch_size, timesteps].
             targets_length: The length of labels Tensor with shape [batch_size, ]
+            return_as_scorer: Whether to average by sequence length and return batch result.
 
         Returns: Loss sum and weight sum.
         """
@@ -219,6 +225,9 @@ class SequenceToSequence(Configurable):
                 maxlen=tf.to_int32(tf.shape(targets)[0]),
                 dtype=tf.float32), [1, 0])
         masked_ces = ces * ces_mask
+        if return_as_scorer:
+            loss_sum = tf.reduce_sum(masked_ces, axis=0)
+            return loss_sum / tf.to_float(targets_length)
         loss_sum = tf.reduce_sum(masked_ces)
         weight_sum = tf.to_float(tf.shape(targets_length)[0])
         return loss_sum, weight_sum
@@ -373,11 +382,13 @@ class SequenceToSequence(Configurable):
          else a list with the first element be `loss`.
         """
         if self.mode == ModeKeys.TRAIN or self.mode == ModeKeys.EVAL:
-            loss_sum, weight_sum = self._compute_loss(
+            loss = self._compute_loss(
                 logits=decoding_result,  # [timesteps, batch_size, dim]
                 targets=kwargs[Constants.LABEL_IDS_NAME],
-                targets_length=kwargs[Constants.LABEL_LENGTH_NAME])
+                targets_length=kwargs[Constants.LABEL_LENGTH_NAME],
+                return_as_scorer=(self.mode == ModeKeys.EVAL))
         if self.mode == ModeKeys.TRAIN:
+            loss_sum, weight_sum = loss
             return loss_sum, weight_sum
 
         attentions = dict()
@@ -398,7 +409,7 @@ class SequenceToSequence(Configurable):
             get_attention("decoder_self_attention", getattr(decoder_output, "decoder_self_attention"))
 
         if self.mode == ModeKeys.EVAL:
-            return (loss_sum, weight_sum), attentions
+            return loss, attentions
 
         assert self.mode == ModeKeys.INFER
         predict_out = process_beam_predictions(

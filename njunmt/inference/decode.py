@@ -57,18 +57,13 @@ def evaluate(sess, loss_op, eval_data):
     Returns: Total loss averaged by number of data samples.
     """
     losses = []
-    weights = []
-    total_loss = 0.
-    total_weight = 0.
     for data in eval_data:
         parallels = data["feed_dict"].pop("parallels")
         avail = sum(numpy.array(parallels) > 0)
         loss = _evaluate(sess, data["feed_dict"], loss_op[:avail])
         data["feed_dict"]["parallels"] = parallels
-        total_loss += sum([_l[0] for _l in loss])
-        total_weight += sum([_l[1] for _l in loss])
-    loss = total_loss / total_weight
-    return loss
+        losses.extend(loss)
+    return numpy.concatenate(losses, axis=0)
 
 
 def evaluate_with_attention(
@@ -93,8 +88,7 @@ def evaluate_with_attention(
 
     Returns: Total loss averaged by number of data samples.
     """
-    losses = 0.
-    weights = 0.
+    losses = []
     num_of_samples = 0
     attentions = {}
     for data in eval_data:
@@ -116,13 +110,12 @@ def evaluate_with_attention(
             attentions.update(pack_batch_attention_dict(
                 num_of_samples, ss_strs, tt_strs, _attentions))
         data["feed_dict"]["parallels"] = parallels
-        losses += sum([_l[0] for _l in loss])
-        weights += sum([_l[1] for _l in loss])
+        print (loss)
+        losses.extend(loss)
         num_of_samples += _n_samples
-    loss = losses / weights
     if attention_op is not None:
         dump_attentions(output_filename_prefix, attentions)
-    return loss
+    return numpy.concatenate(losses, axis=0)
 
 
 def _infer(

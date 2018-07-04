@@ -193,7 +193,7 @@ def model_fn(
             # model_output is prediction
             return _input_fields, _model_output
         elif mode == ModeKeys.EVAL:
-            # model_output = (loss_sum, weight_sum), attention
+            # model_output = loss_with_batch, attention
             return _input_fields, _model_output[0], _model_output[1]
         else:  # mode == TRAIN
             # model_output = loss_sum, weight_sum
@@ -220,7 +220,7 @@ def model_fn(
             model_name,
             mode,
             input_fields=input_fields,
-            loss=loss_op,  # a list of tuples [(loss_sum0, weight_sum0), (loss_sum1, weight_sum1), ...]
+            loss=loss_op,  # a list of loss tensors
             # attentions for force decoding
             predictions=attention)
 
@@ -233,9 +233,7 @@ def model_fn(
     tf.add_to_collection(Constants.DISPLAY_VALUE_COLLECTION_NAME, train_loss)
     # build training hooks
     hooks = build_hooks(model_configs, distributed_mode=distributed_mode, is_chief=is_chief)
-    # from njunmt.training.text_metrics_spec import build_eval_metrics
-    # hooks.extend(build_eval_metrics(model_configs, eval_dataset,
-    #                                 is_cheif=is_chief, model_name=model_name))
+
     return EstimatorSpec(
         name,
         mode,
