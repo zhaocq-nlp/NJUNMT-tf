@@ -18,7 +18,13 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-ModeKeys = tf.contrib.learn.ModeKeys
+
+class ModeKeys(object):
+    """ Standard names for model modes. """
+    TRAIN = tf.estimator.ModeKeys.TRAIN
+    INFER = tf.estimator.ModeKeys.PREDICT
+    EVAL = tf.estimator.ModeKeys.EVAL
+    FORCE_DECODE = "force_decode"
 
 
 def concat_name(prefix, name):

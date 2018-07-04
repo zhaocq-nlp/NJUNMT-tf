@@ -453,7 +453,8 @@ class BleuMetricSpec(TextMetricSpec):
                        os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME),
                        global_step=global_step)
         if len(self._best_checkpoint_names) == 0 or bleu > self._best_checkpoint_bleus[0]:
-            backup_dirname = "{dirname_prefix}_iter{global_step}_bleu{bleu}".format(
+            backup_dirname = os.path.join(self._model_configs["model_dir"], "..") \
+                             + "{dirname_prefix}_iter{global_step}_bleu{bleu}".format(
                 dirname_prefix=Constants.BACKUP_MODEL_DIRNAME_PREFIX,
                 global_step=global_step,
                 bleu=("%.1f" % bleu))

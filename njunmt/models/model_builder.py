@@ -193,9 +193,9 @@ def model_fn(
             # model_output is prediction
             return _input_fields, _model_output
         elif mode == ModeKeys.EVAL:
-            # model_output = loss_with_batch, attention
+            # model_output = (loss_sum, weight_sum), attention
             return _input_fields, _model_output[0], _model_output[1]
-        else:  # mode == TRAIN
+        elif mode == ModeKeys.TRAIN:  # mode == TRAIN
             # model_output = loss_sum, weight_sum
             _loss = _model_output[0] / _model_output[1]
             grads = opt.optimizer.compute_gradients(
@@ -203,6 +203,8 @@ def model_fn(
                 var_list=tf.trainable_variables(),
                 colocate_gradients_with_ops=True)
             return _input_fields, _loss, grads
+        else:  # mode == FORCE_DECODE
+            raise NotImplementedError("TODO reranking")
 
     model_returns = parallelism(_build_model)
     input_fields = model_returns[0]
@@ -317,4 +319,3 @@ def model_fn_ensemble(
         ModeKeys.INFER,
         input_fields=input_fields,
         predictions=predictions)
-

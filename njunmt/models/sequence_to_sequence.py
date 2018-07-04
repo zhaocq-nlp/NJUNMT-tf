@@ -381,12 +381,13 @@ class SequenceToSequence(Configurable):
         Returns: A dictionary containing inference status if mode==INFER,
          else a list with the first element be `loss`.
         """
-        if self.mode == ModeKeys.TRAIN or self.mode == ModeKeys.EVAL:
+        if self.mode == ModeKeys.TRAIN or self.mode == ModeKeys.EVAL \
+                or self.mode == ModeKeys.FORCE_DECODE:
             loss = self._compute_loss(
                 logits=decoding_result,  # [timesteps, batch_size, dim]
                 targets=kwargs[Constants.LABEL_IDS_NAME],
                 targets_length=kwargs[Constants.LABEL_LENGTH_NAME],
-                return_as_scorer=(self.mode == ModeKeys.EVAL))
+                return_as_scorer=(self.mode == ModeKeys.FORCE_DECODE))
         if self.mode == ModeKeys.TRAIN:
             loss_sum, weight_sum = loss
             return loss_sum, weight_sum

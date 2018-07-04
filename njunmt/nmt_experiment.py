@@ -419,6 +419,6 @@ class EvalExperiment(Experiment):
                 output_filename_prefix=data_param["labels_file"].strip().split("/")[-1])
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
                             .format(data_param["features_file"], str(time.time() - start_time)))
-            tf.logging.info("Evaluation Score ({} on {}): {}, {}"
-                            .format(metric_str, data_param["features_file"], result, len(result)))
+            tf.logging.info("Evaluation Score ({} on {}): {}"
+                            .format(metric_str, data_param["features_file"], result))
         tf.logging.info("Total Elapsed Time: %s" % str(time.time() - overall_start_time))
