@@ -21,7 +21,6 @@ import tensorflow as tf
 from njunmt.utils.configurable import Configurable
 from njunmt.layers.common_layers import fflayer
 from njunmt.layers.common_layers import add_sinusoids_timing_signal
-from njunmt.training import loss_fns
 
 
 class Modality(Configurable):
