@@ -18,7 +18,6 @@ from __future__ import print_function
 
 import numpy
 import tensorflow as tf
-from tensorflow import gfile
 
 from njunmt.inference.attention import postprocess_attention
 from njunmt.inference.attention import select_attention_sample_by_sample
@@ -26,6 +25,7 @@ from njunmt.inference.attention import pack_batch_attention_dict
 from njunmt.inference.attention import dump_attentions
 from njunmt.tools.tokenizeChinese import to_chinese_char
 from njunmt.utils.expert_utils import repeat_n_times
+from njunmt.utils.misc import open_file
 
 
 def _evaluate(
@@ -266,7 +266,7 @@ def infer(
     if to_char_level:
         hypothesis = to_chinese_char(hypothesis)
     if output:
-        with gfile.GFile(output, "w") as fw:
+        with open_file(output, mode="w") as fw:
             fw.write("\n".join(hypothesis) + "\n")
     if output_attention:
         dump_attentions(output, attentions)

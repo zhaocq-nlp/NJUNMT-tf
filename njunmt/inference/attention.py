@@ -15,7 +15,8 @@
 import numpy
 import json
 import tensorflow as tf
-from tensorflow import gfile
+
+from njunmt.utils.misc import open_file
 
 
 def postprocess_attention(beam_ids, attention_dict, gather_idx):
@@ -180,5 +181,5 @@ def dump_attentions(output_filename_prefix, attentions):
         attentions: A dict of attention arrays.
     """
     tf.logging.info("Saving attention information into {}.attention.".format(output_filename_prefix))
-    with gfile.GFile(output_filename_prefix + ".attention", "wb") as f:
+    with open_file(output_filename_prefix + ".attention", mode="wb") as f:
         f.write(json.dumps(attentions).encode("utf-8"))

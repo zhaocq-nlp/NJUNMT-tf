@@ -25,7 +25,6 @@ import tensorflow as tf
 from tensorflow import gfile
 from tensorflow.python.client import device_lib
 
-from njunmt.utils.configurable import ModelConfigs
 from njunmt.utils.constants import Constants
 from njunmt.utils.constants import concat_name
 
@@ -154,7 +153,7 @@ def dump_model_analysis(model_dir):
     # tf.contrib.tfprof.model_analyzer.print_model_analysis(
     #     tf.get_default_graph(), tfprof_options=opts)
     # Print the model analysis
-    with gfile.GFile(filename) as file:
+    with open_file(filename) as file:
         tf.logging.info(file.read())
 
 
@@ -241,6 +240,7 @@ def load_pretrain_model(model_name, pretrain_model_dir, problem_name):
     Returns:
         A list of assign ops.
     """
+    from njunmt.utils.configurable import ModelConfigs
     top_scope_name = get_model_top_scope_name(model_name, problem_name)
     pt_model_configs = ModelConfigs.load(pretrain_model_dir)
     pt_model_top_scope_name = get_model_top_scope_name(pt_model_configs["model"], pt_model_configs["problem_name"])

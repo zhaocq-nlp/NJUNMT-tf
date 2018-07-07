@@ -27,6 +27,7 @@ import tensorflow as tf
 from tensorflow import gfile
 
 from njunmt.utils.constants import Constants, ModeKeys
+from njunmt.utils.misc import open_file
 
 
 class abstractstaticmethod(staticmethod):  # pylint: disable=C0111,C0103
@@ -157,7 +158,7 @@ def load_from_config_path(config_paths):
             raise OSError("config file does not exist: {}".format(config_path))
         config_path = os.path.abspath(config_path)
         tf.logging.info("loading configurations from {}".format(config_path))
-        with gfile.GFile(config_path, "r") as config_file:
+        with open_file(config_path, mode="r") as config_file:
             config_flags = yaml.load(config_file)
             model_configs = deep_merge_dict(model_configs, config_flags)
     return model_configs
@@ -390,7 +391,7 @@ class ModelConfigs:
         model_config_filename = os.path.join(output_dir, Constants.MODEL_CONFIG_YAML_FILENAME)
         if not gfile.Exists(output_dir):
             gfile.MakeDirs(output_dir)
-        with gfile.GFile(model_config_filename, "w") as file:
+        with open_file(model_config_filename, mode="w") as file:
             yaml.dump(model_config, file)
 
     @staticmethod
@@ -405,6 +406,6 @@ class ModelConfigs:
         model_config_filename = os.path.join(model_dir, Constants.MODEL_CONFIG_YAML_FILENAME)
         if not gfile.Exists(model_config_filename):
             raise OSError("Fail to find model config file: %s" % model_config_filename)
-        with gfile.GFile(model_config_filename, "r") as file:
+        with open_file(model_config_filename, mode="r") as file:
             model_configs = yaml.load(file)
         return model_configs

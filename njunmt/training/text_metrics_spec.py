@@ -327,14 +327,14 @@ class BleuMetricSpec(TextMetricSpec):
         """Read the best BLEU scores and the name of corresponding
         checkpoint archives from log file."""
         if gfile.Exists(self._top_bleu_ckpt_log_filename):
-            with gfile.GFile(self._top_bleu_ckpt_log_filename, "r") as fp:
+            with open_file(self._top_bleu_ckpt_log_filename, mode="r") as fp:
                 self._best_checkpoint_bleus = [float(x) for x in fp.readline().strip().split(",")]
                 self._best_checkpoint_names = [x for x in fp.readline().strip().split(",")]
 
     def _write_ckpt_bleulog(self):
         """Write the best BLEU scores and the name of corresponding
         checkpoint archives to log file."""
-        with gfile.GFile(self._top_bleu_ckpt_log_filename, "w") as fw:
+        with open_file(self._top_bleu_ckpt_log_filename, mode="w") as fw:
             fw.write(','.join([str(x) for x in self._best_checkpoint_bleus]) + "\n")
             fw.write(','.join([x for x in self._best_checkpoint_names]) + "\n")
 
@@ -451,7 +451,7 @@ class BleuMetricSpec(TextMetricSpec):
             run_context.request_stop()
         # saving checkpoints if eval_steps and save_checkpoint_steps mismatch
         if len(self._best_checkpoint_names) == 0 or bleu > self._best_checkpoint_bleus[0]:
-            with gfile.GFile(self._tmp_trans_file_prefix + str(global_step), "w") as fw:
+            with open_file(self._tmp_trans_file_prefix + str(global_step), mode="w") as fw:
                 fw.write('\n'.join(hypothesis) + "\n")
             if not gfile.Exists("{}-{}.meta".format(
                     os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME), global_step)):
