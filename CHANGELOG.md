@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Layer normalization for fflayer and LayerNormLSTMCell
 - Multi-GPU inference and evaluation (something wrong with training)
 - Pseudo Multi-GPU training with `update_cycle` option
+- Class ``LineReader``
 
 ### Changed
 - Default loss function.
@@ -21,6 +22,8 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 - Configuration: ``multi_bleu_script`` and ``tokenize_scropt``.
+- Class ``Dataset``
+- loss_fns.py
 
 ### Fixed
 - Bug when mode=EVAL and output attention with BPE.
