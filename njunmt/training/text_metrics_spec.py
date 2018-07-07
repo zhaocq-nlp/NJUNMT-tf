@@ -320,18 +320,21 @@ class BleuMetricSpec(TextMetricSpec):
         self._best_checkpoint_bleus = list()
         self._best_checkpoint_names = list()
 
+        self._top_bleu_ckpt_log_filename = os.path.join(self._model_configs["model_dir"], "../") \
+                                           + Constants.TOP_BLEU_CKPTLOG_FILENAME
+
     def _read_ckpt_bleulog(self):
         """Read the best BLEU scores and the name of corresponding
         checkpoint archives from log file."""
-        if gfile.Exists(Constants.TOP_BLEU_CKPTLOG_FILENAME):
-            with gfile.GFile(Constants.TOP_BLEU_CKPTLOG_FILENAME, "r") as fp:
+        if gfile.Exists(self._top_bleu_ckpt_log_filename):
+            with gfile.GFile(self._top_bleu_ckpt_log_filename, "r") as fp:
                 self._best_checkpoint_bleus = [float(x) for x in fp.readline().strip().split(",")]
                 self._best_checkpoint_names = [x for x in fp.readline().strip().split(",")]
 
     def _write_ckpt_bleulog(self):
         """Write the best BLEU scores and the name of corresponding
         checkpoint archives to log file."""
-        with gfile.GFile(Constants.TOP_BLEU_CKPTLOG_FILENAME, "w") as fw:
+        with gfile.GFile(self._top_bleu_ckpt_log_filename, "w") as fw:
             fw.write(','.join([str(x) for x in self._best_checkpoint_bleus]) + "\n")
             fw.write(','.join([x for x in self._best_checkpoint_names]) + "\n")
 
@@ -392,17 +395,17 @@ class BleuMetricSpec(TextMetricSpec):
             global_step: A python integer, the current training step.
         """
         start_time = time.time()
-        output_prediction_file = self._tmp_trans_file_prefix + str(global_step)
+        # output_prediction_file = self._tmp_trans_file_prefix + str(global_step)
         sources, hypothesis, _ = infer(
             sess=run_context.session,
             prediction_op=self._predict_ops,
             infer_data=self._infer_data,
-            output=output_prediction_file,
+            output=None,  # output_prediction_file,
             vocab_target=self._dataset["vocab_target"],
             vocab_source=self._dataset["vocab_source"],
             delimiter=self._delimiter,
             output_attention=False,
-            tokenize_output=self._char_level,
+            to_char_level=self._char_level,
             verbose=False)
         # print translation samples
         random_start = random.randint(0, len(hypothesis) - 5)
@@ -416,14 +419,14 @@ class BleuMetricSpec(TextMetricSpec):
         if self._summary_writer is not None:
             self._summary_writer.add_summary("Metrics/BLEU", bleu, global_step)
         _, elapsed_time_all = self._timer.update_last_triggered_step(global_step)
-        self._update_bleu_ckpt(run_context, bleu, global_step)
+        self._update_bleu_ckpt(run_context, bleu, hypothesis, global_step)
         tf.logging.info(
             "Evaluating DEVSET: BLEU=%.2f (Best %.2f)  GlobalStep=%d  BadCount=%d  "
             "UD %.2f  UDfromStart %.2f" % (
                 bleu, self._best_bleu_score, global_step, self._bad_count,
                 time.time() - start_time, elapsed_time_all))
 
-    def _update_bleu_ckpt(self, run_context, bleu, global_step):
+    def _update_bleu_ckpt(self, run_context, bleu, hypothesis, global_step):
         """ Updates the best checkpoints according to BLEU score and
         removes the worst model if the number of checkpoint archives
         exceeds maximum_keep_models.
@@ -435,6 +438,7 @@ class BleuMetricSpec(TextMetricSpec):
             run_context: A `SessionRunContext` object.
             bleu: A python float, the BLEU score derived by the model
               at this step.
+            hypothesis: A list of hypothesis for validation set.
             global_step: A python integer, the current training step.
         """
         if bleu >= self._best_bleu_score:
@@ -446,13 +450,15 @@ class BleuMetricSpec(TextMetricSpec):
             tf.logging.info("early stop.")
             run_context.request_stop()
         # saving checkpoints if eval_steps and save_checkpoint_steps mismatch
-        if not gfile.Exists("{}-{}.meta".format(
-                os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME), global_step)):
-            saver = saver_lib._get_saver_or_default()
-            saver.save(run_context.session,
-                       os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME),
-                       global_step=global_step)
         if len(self._best_checkpoint_names) == 0 or bleu > self._best_checkpoint_bleus[0]:
+            with gfile.GFile(self._tmp_trans_file_prefix + str(global_step), "w") as fw:
+                fw.write('\n'.join(hypothesis) + "\n")
+            if not gfile.Exists("{}-{}.meta".format(
+                    os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME), global_step)):
+                saver = saver_lib._get_saver_or_default()
+                saver.save(run_context.session,
+                           os.path.join(self._checkpoint_dir, Constants.MODEL_CKPT_FILENAME),
+                           global_step=global_step)
             backup_dirname = os.path.join(self._model_configs["model_dir"], "../") \
                              + "{dirname_prefix}_iter{global_step}_bleu{bleu}".format(
                 dirname_prefix=Constants.BACKUP_MODEL_DIRNAME_PREFIX,

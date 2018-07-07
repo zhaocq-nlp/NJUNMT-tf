@@ -111,7 +111,7 @@ class EnsembleExperiment(Experiment):
                   vocab_target=vocab_target,
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=False,
-                  tokenize_output=self._model_configs["infer"]["char_level"],
+                  to_char_level=self._model_configs["infer"]["char_level"],
                   verbose=True)
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
                             .format(param["features_file"], str(time.time() - start_time)))

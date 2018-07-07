@@ -301,7 +301,7 @@ class InferExperiment(Experiment):
                   vocab_target=vocab_target,
                   delimiter=self._model_configs["infer"]["delimiter"],
                   output_attention=param["output_attention"],
-                  tokenize_output=self._model_configs["infer"]["char_level"],
+                  to_char_level=self._model_configs["infer"]["char_level"],
                   verbose=True)
             tf.logging.info("FINISHED {}. Elapsed Time: {}."
                             .format(param["features_file"], str(time.time() - start_time)))

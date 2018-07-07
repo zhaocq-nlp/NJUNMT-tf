@@ -207,7 +207,7 @@ def infer(
         vocab_target,
         delimiter=" ",
         output_attention=False,
-        tokenize_output=False,
+        to_char_level=False,
         verbose=True):
     """ Infers data and save the prediction results.
 
@@ -224,7 +224,7 @@ def infer(
           sequence.
         delimiter: The delimiter of output token sequence.
         output_attention: Whether to output attention information.
-        tokenize_output: Whether to split words into characters
+        to_char_level: Whether to split words into characters
           (only for Chinese).
         verbose: Print inference information if set True.
 
@@ -263,7 +263,7 @@ def infer(
         cnt += len(x_str)
         if verbose:
             tf.logging.info(cnt)
-    if tokenize_output:
+    if to_char_level:
         hypothesis = to_chinese_char(hypothesis)
     if output:
         with gfile.GFile(output, "w") as fw:
