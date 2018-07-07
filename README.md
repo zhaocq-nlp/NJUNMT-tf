@@ -19,7 +19,7 @@ The code also supports:
 
 - model ensemble.
 - learning rate decaying according to loss on evaluation data.
-- model validation on evaluation data with BLEU score and early stop strategy.
+- model validation on evaluation data with BLEU  score and early stop strategy.
 - monitoring with [TensorBoard](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 - capability for [BPE](https://github.com/rsennrich/subword-nmt)
 
@@ -106,10 +106,11 @@ They are of the same effect.
 The available FLAGS (or the top levels of yaml configs) for bin.train are as follows:
 - **config_paths**: the paths for config files
 - **model_dir**: the directory for saving checkpoints
+- **problem_name**: The top name scope, "seq2seq" by default
 - **train**: training options, e.g. batch size, maximum length
 - **data**: training data, evaluation data, vocabulary and (optional) BPE codes
 - **hooks**: a list of training hooks (not provided, in the current version)
-- **metrics**: a list of validation metrics on evaluation data
+- **metrics**: a list of evaluation metrics on evaluation data
 - **model**: the class name of the model
 - **model_params**: parameters for the model
 - **optimizer_params**: parameters for optimizer
@@ -144,7 +145,7 @@ The Transformer benchmarks are performed on 1 GTX 1080Ti GPU with predefined con
 Note that in Transformer model, we set `batch_tokens_size=2500` with `update_cycle=10` to realize pseudo parallel training.
 
 
-The beam sizes for RNN and Transformer are 10 and 4 separately.
+The beam sizes for RNN and Transformer are 10 and 4 respectively.
 
 The datasets are preprocessed using [fetch_wmt2017_ende.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2017_ende.sh) and [fetch_wmt2018_zhen.sh](https://github.com/zhaocq-nlp/MT-data-processing/blob/master/fetch_wmt2018_zhen.sh) referring to [Edinburgh’s Report](http://statmt.org/wmt17/pdf/WMT39.pdf).
 
