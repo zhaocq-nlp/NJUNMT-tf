@@ -59,7 +59,7 @@ class Modality(Configurable):
             "share_embedding_and_softmax_weights": False,
             "dropout_logit_keep_prob": 1.0,
             "initializer": None,  # None for default, else random uniform, or random normal
-            "loss": "crossentropy",
+            "loss": "crossentropy", # deprecated
             "timing": None  # or sinusoids, or emb
         }
 

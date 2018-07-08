@@ -212,7 +212,7 @@ class SequenceToSequence(Configurable):
         targets = tf.transpose(targets, [1, 0])  # [timesteps, batch_size]
         if float(self.params["label_smoothing"]) > 0.:
             soft_targets, normalizing = label_smoothing(
-                targets, logits.get_shape().as_list()[-1])
+                targets, logits.get_shape().as_list()[-1], self.params["label_smoothing"])
             ces = tf.nn.softmax_cross_entropy_with_logits(
                 logits=logits, labels=soft_targets) - normalizing
         else:
