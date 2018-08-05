@@ -207,14 +207,14 @@ class Vocab(object):
         Returns: A list of word tokens.
         """
         pred_tokens = [self.vocab_r_dict[i] for i in pred_ids]
-        if bpe_decoding and self._bpe:
-            pred_tokens = self._bpe.decode(pred_tokens)
         if Constants.SEQUENCE_END in pred_tokens:
             if len(pred_tokens) == 1:
                 return ['']
             pred_tokens = pred_tokens[:pred_tokens.index(Constants.SEQUENCE_END)]
         if reverse_seq and self._reverse_seq:
-            return pred_tokens[::-1]
+            pred_tokens = pred_tokens[::-1]
+        if bpe_decoding and self._bpe:
+            pred_tokens = self._bpe.decode(pred_tokens)
         return pred_tokens
 
     def __getitem__(self, item):
