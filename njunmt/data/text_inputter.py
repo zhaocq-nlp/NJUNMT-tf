@@ -83,7 +83,7 @@ def pack_feed_dict(name_prefixs, origin_datas, paddings, input_fields):
 
         parallels = repeat_n_times(
             n_devices, _feed_batchs,
-            range(n_devices), input_fields)
+            list(range(n_devices)), input_fields)
         data["feed_dict"]["parallels"] = parallels
 
     if isinstance(name_prefixs, six.string_types):
