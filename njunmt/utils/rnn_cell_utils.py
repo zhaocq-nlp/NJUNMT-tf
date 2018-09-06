@@ -28,7 +28,7 @@ from njunmt.utils.rnn_cells import StackedRNNCell
 
 # Import all cell classes from Tensorflow
 TF_CELL_CLASSES = [
-                      x for x in rnn_cell_impl.__dict__.values() + rnn_cell.__dict__.values()
+                      x for x in list(rnn_cell_impl.__dict__.values()) + list(rnn_cell.__dict__.values())
                       # use in-house implemented LSTM cell and GRU cell
                       if inspect.isclass(x) and issubclass(x, RNNCell)]
 for cell_class in TF_CELL_CLASSES:
