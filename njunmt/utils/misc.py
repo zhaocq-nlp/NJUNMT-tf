@@ -83,6 +83,7 @@ def port_is_open(host):
     """
     ip, port = host.strip().split(":")
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(5)
     try:
         s.connect((ip, int(port)))
         s.shutdown(2)
